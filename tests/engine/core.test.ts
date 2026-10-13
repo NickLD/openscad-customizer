@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { isEmptyGeometry } from '../../src/engine/log';
 import { runJob, type OpenSCADFactory } from '../../src/engine/core';
 import type { FileMap, ParamSet } from '../../src/types';
 import { decodeText, encodeText } from '../../src/util';
@@ -51,11 +52,15 @@ describe('runJob render', () => {
   it('resolves includes relative to the file and from /libraries', async () => {
     const r = await runJob(factory, {
       kind: 'render',
-      files: fm({ '/repo/m.scad': 'include <sub/a.scad>\nuse <mylib/b.scad>\na();\nb();', '/repo/sub/a.scad': 'module a() cube(1);', '/libraries/mylib/b.scad': 'module b() translate([2,0,0]) cube(1);' }),
+      files: fm({ '/repo/m.scad': 'include <sub/a.scad>\nuse <mylib/b.scad>\na();\nb();', '/repo/sub/a.scad': 'module a() { echo("from-sub"); cube(1); }', '/libraries/mylib/b.scad': 'module b() { echo("from-lib"); translate([2,0,0]) cube(1); }' }),
       entry: '/repo/m.scad', values: {},
     });
     expect(r.exitCode).toBe(0);
     expect(r.output).not.toBeNull();
+    const echoes = r.log.filter((l) => l.level === 'echo').map((l) => l.text);
+    expect(echoes).toContain('"from-sub"');
+    expect(echoes).toContain('"from-lib"');
+    expect(r.log.filter((l) => l.level === 'warning' || l.level === 'error')).toEqual([]);
   });
 
   it('reports syntax errors with file and line', async () => {
@@ -67,7 +72,9 @@ describe('runJob render', () => {
 
   it('flags empty geometry', async () => {
     const r = await runJob(factory, { kind: 'render', files: fm({ '/repo/e.scad': 'echo(1);' }), entry: '/repo/e.scad', values: {} });
+    expect(r.exitCode).toBe(1);
     expect(r.output).toBeNull();
+    expect(isEmptyGeometry(r.log)).toBe(true);
     expect(r.log.some((l) => l.text.includes('top level object is empty'))).toBe(true);
   });
 });
