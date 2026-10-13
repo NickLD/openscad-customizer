@@ -9,10 +9,11 @@ export type LibSource = {
   only?: string[];
   /** Skip paths starting with these prefixes (after subdir). */
   exclude?: string[];
+  /** Default: `.scad` only (libraries' images and meshes are documentation, not inputs). */
   extensions?: string[];
 };
 
-const SKIP = ['examples/', 'tests/', 'test/', '.github/', 'docs/', 'tutorials/'];
+const SKIP = ['examples/', 'tests/', 'test/', '.github/', 'docs/', 'tutorials/', 'gallery/'];
 
 /** Key = first path segment of the include (`BOSL2/std.scad` -> `BOSL2`) or a top-level file name. Pinned 2026-10-13. */
 export const REGISTRY: Record<string, LibSource> = {
@@ -69,6 +70,8 @@ export function planLibraries(files: Map<string, Uint8Array>, manifest: Manifest
   return { libs, missing: [...missing], needsFonts };
 }
 
+const LIB_EXTENSIONS = ['.scad'];
+
 async function loadSource(net: Net, src: LibSource): Promise<{ files: FileMap; skipped: string[] }> {
   // Manifest libraries without @ref use 'HEAD', which jsDelivr does not understand: resolve it to a commit.
   const ref = src.ref === 'HEAD' ? (await resolveRef(net, src.owner, src.repo)).ref : src.ref;
@@ -80,17 +83,13 @@ async function loadSource(net: Net, src: LibSource): Promise<{ files: FileMap; s
       if (src.only && !src.only.includes(rel)) return false;
       return !(src.exclude ?? []).some((x) => rel.startsWith(x));
     });
-  const { files, skipped } = await fetchFiles(net, src.owner, src.repo, ref, listed, LIB_CAPS, { extensions: src.extensions, concurrency: 16 });
+  const { files, skipped } = await fetchFiles(net, src.owner, src.repo, ref, listed, LIB_CAPS, { extensions: src.extensions ?? LIB_EXTENSIONS, concurrency: 16 });
   const out: FileMap = new Map();
   for (const [p, d] of files) out.set(`${src.mount}/${p.slice(prefix.length)}`, d);
   return { files: out, skipped };
 }
 
-export async function loadLibraries(net: Net, plan: LibraryPlan): Promise<{ files: FileMap; warnings: string[] }> {
-  const sources: Array<[string, LibSource]> = Object.entries(plan.libs);
-  if (plan.needsFonts) sources.push(['fonts', FONTS]);
-  const files: FileMap = new Map();
-  const warnings: string[] = [];
+async function loadAll(net: Net, sources: Array<[string, LibSource]>, files: FileMap, warnings: string[]): Promise<void> {
   await Promise.all(sources.map(async ([name, src]) => {
     try {
       const r = await loadSource(net, src);
@@ -100,5 +99,37 @@ export async function loadLibraries(net: Net, plan: LibraryPlan): Promise<{ file
       warnings.push(`Couldn't load library ${name} (${src.owner}/${src.repo}): ${(e as Error).message}`);
     }
   }));
+}
+
+/** Bundled libraries that loaded library files include but the plan does not have yet. */
+function transitiveLibs(files: FileMap, planned: Record<string, LibSource>): Record<string, LibSource> {
+  const extra: Record<string, LibSource> = {};
+  for (const [path, data] of files) {
+    if (!path.toLowerCase().endsWith('.scad')) continue;
+    for (const inc of scanIncludes(decodeText(data))) {
+      if (files.has(joinPath(dirname(path), inc)) || files.has(`/libraries/${inc}`)) continue;
+      const root = inc.split('/')[0];
+      if (!Object.hasOwn(planned, root) && Object.hasOwn(REGISTRY, root)) extra[root] = REGISTRY[root];
+    }
+  }
+  return extra;
+}
+
+export async function loadLibraries(net: Net, plan: LibraryPlan): Promise<{ files: FileMap; warnings: string[] }> {
+  const sources: Array<[string, LibSource]> = Object.entries(plan.libs);
+  if (plan.needsFonts) sources.push(['fonts', FONTS]);
+  const files: FileMap = new Map();
+  const warnings: string[] = [];
+  await loadAll(net, sources, files, warnings);
+  // One transitive pass (no further recursion): e.g. a manifest library that includes BOSL2.
+  await loadAll(net, Object.entries(transitiveLibs(files, plan.libs)), files, warnings);
+  return { files, warnings };
+}
+
+/** Liberation fonts, for when text() turns out to be needed after all (e.g. called inside a library). */
+export async function loadFonts(net: Net): Promise<{ files: FileMap; warnings: string[] }> {
+  const files: FileMap = new Map();
+  const warnings: string[] = [];
+  await loadAll(net, [['fonts', FONTS]], files, warnings);
   return { files, warnings };
 }

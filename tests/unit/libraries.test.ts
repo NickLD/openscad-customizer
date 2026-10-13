@@ -61,3 +61,44 @@ describe('loadLibraries', () => {
     expect(warnings).toEqual([]);
   });
 });
+
+describe('loadLibraries file selection', () => {
+  function libNet(listings: Record<string, string[]>, bodies: Record<string, string>): Net & { fetched: string[] } {
+    const fetched: string[] = [];
+    return {
+      fetched,
+      async getJson(url) {
+        for (const [key, names] of Object.entries(listings)) {
+          if (url === `https://data.jsdelivr.com/v1/packages/gh/${key}?structure=flat`) return { status: 200, data: { files: names.map((name) => ({ name: '/' + name, size: 1 })) } };
+        }
+        return { status: 404, data: null };
+      },
+      async getBytes(url) {
+        fetched.push(url);
+        return url in bodies ? encodeText(bodies[url]) : encodeText('');
+      },
+    };
+  }
+
+  it('fetches only .scad files and skips gallery/', async () => {
+    const lib = { owner: 'f', repo: 'fancy', ref: 'v2', mount: '/libraries/fancy', exclude: REGISTRY.BOSL2.exclude };
+    const net = libNet({ 'f/fancy@v2': ['x.scad', 'gallery/g.scad', 'pic.png', 'part.stl', 'y.scad'] }, {});
+    const { files } = await loadLibraries(net, { libs: { fancy: lib }, missing: [], needsFonts: false });
+    expect([...files.keys()].sort()).toEqual(['/libraries/fancy/x.scad', '/libraries/fancy/y.scad']);
+    expect(net.fetched.some((u) => /\.png|\.stl|gallery/.test(u))).toBe(false);
+  });
+
+  it('loads registry libraries included by a loaded library (one transitive pass)', async () => {
+    const bosl = REGISTRY.BOSL2;
+    const mcad = REGISTRY.MCAD;
+    const net = libNet(
+      { [`f/fancy@v2`]: ['a.scad'], [`${bosl.owner}/${bosl.repo}@${bosl.ref}`]: ['std.scad'], [`${mcad.owner}/${mcad.repo}@${mcad.ref}`]: ['units.scad'] },
+      {
+        [cdnUrl('f', 'fancy', 'v2', 'a.scad')]: 'include <BOSL2/std.scad>\ninclude <local.scad>',
+        [cdnUrl(bosl.owner, bosl.repo, bosl.ref, 'std.scad')]: 'use <MCAD/units.scad>',
+      },
+    );
+    const { files } = await loadLibraries(net, { libs: { fancy: { owner: 'f', repo: 'fancy', ref: 'v2', mount: '/libraries/fancy' } }, missing: [], needsFonts: false });
+    expect([...files.keys()].sort()).toEqual(['/libraries/BOSL2/std.scad', '/libraries/fancy/a.scad']);
+  });
+});

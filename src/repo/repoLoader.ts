@@ -1,5 +1,5 @@
 import { MANIFEST_NAME, parseManifest, type Manifest } from '../manifest';
-import { decodeText } from '../util';
+import { basename, decodeText } from '../util';
 import type { Net } from './net';
 
 export type { Net } from './net';
@@ -133,10 +133,28 @@ export async function fetchFiles(
   return { files, skipped };
 }
 
-export async function loadRepo(net: Net, owner: string, repo: string, ref?: string): Promise<LoadedRepo> {
+/** Script and data files: fetched first, so assets can never crowd them out of the caps. */
+const PRIMARY_EXTENSIONS = ['.scad', '.json'];
+const isPrimary = (p: string) => PRIMARY_EXTENSIONS.some((e) => p.toLowerCase().endsWith(e));
+
+export async function loadRepo(net: Net, owner: string, repo: string, ref?: string, caps: Caps = REPO_CAPS): Promise<LoadedRepo> {
   const resolved = await resolveRef(net, owner, repo, ref);
   const list = await listFiles(net, owner, repo, resolved.ref);
-  const { files, skipped } = await fetchFiles(net, owner, repo, resolved.ref, list, REPO_CAPS);
+  // Phase 1: .scad and .json files.
+  const primary = await fetchFiles(net, owner, repo, resolved.ref, list.filter((f) => isPrimary(f.path)), caps, { extensions: PRIMARY_EXTENSIONS });
+  const files = primary.files;
+  const skipped = [...primary.skipped];
+  // Phase 2: other assets (STL, PNG, …), only when some script mentions them, within what is left of the caps.
+  const texts = [...files].filter(([p]) => p.toLowerCase().endsWith('.scad')).map(([, d]) => decodeText(d));
+  const referenced = list.filter((f) => !isPrimary(f.path) && texts.some((t) => t.includes(basename(f.path))));
+  if (referenced.length) {
+    // Budget by listed size, as fetchFiles does.
+    const used = list.reduce((n, f) => n + (files.has(f.path) ? f.size : 0), 0);
+    const rest = { ...caps, maxFiles: Math.max(0, caps.maxFiles - files.size), maxBytes: Math.max(0, caps.maxBytes - used) };
+    const assets = await fetchFiles(net, owner, repo, resolved.ref, referenced, rest);
+    for (const [p, d] of assets.files) files.set(p, d);
+    skipped.push(...assets.skipped);
+  }
   const warnings: string[] = [];
   if (resolved.stale) warnings.push(`GitHub's API is rate-limited, so this loaded "${resolved.ref}" by name. It may be a few hours out of date.`);
   if (skipped.length) warnings.push(`Skipped ${skipped.length} file(s): ${skipped.join(', ')}`);

@@ -131,3 +131,38 @@ describe('loadRepo', () => {
     await expect(loadRepo(fakeNet({}), 'o', 'r')).rejects.toBeInstanceOf(LoadError);
   });
 });
+
+describe('loadRepo two-phase fetching', () => {
+  const PINNED = { [API]: { status: 403 } };
+
+  it('loads .scad files even when many assets sort before them and the file cap is small', async () => {
+    const stls = Array.from({ length: 10 }, (_, i): [string, number] => [`exports/p${i}.stl`, 100]);
+    const routes: Routes = {
+      ...PINNED,
+      ...listing('main', [...stls, ['models/m.scad', 3]]),
+      [cdnUrl('o', 'r', 'main', 'models/m.scad')]: encodeText('x=1'),
+      ...Object.fromEntries(stls.map(([p]) => [cdnUrl('o', 'r', 'main', p), encodeText('solid')])),
+    };
+    const net = fakeNet(routes);
+    const repo = await loadRepo(net, 'o', 'r', undefined, { maxFiles: 3, maxBytes: 1e9, maxFileBytes: 1e9 });
+    expect([...repo.files.keys()]).toEqual(['models/m.scad']);
+    expect(net.calls.some((u) => u.endsWith('.stl'))).toBe(false);
+    expect(repo.warnings.some((w) => w.startsWith('Skipped'))).toBe(false);
+  });
+
+  it('fetches only assets referenced by some .scad text, and reports only wanted files as skipped', async () => {
+    const net = fakeNet({
+      ...PINNED,
+      ...listing('main', [['exports/other.stl', 5], ['big.png', 50], ['m.scad', 30], ['exports/part.stl', 5]]),
+      [cdnUrl('o', 'r', 'main', 'm.scad')]: encodeText('import("exports/part.stl"); surface(file = "big.png");'),
+      [cdnUrl('o', 'r', 'main', 'exports/part.stl')]: encodeText('solid'),
+      [cdnUrl('o', 'r', 'main', 'exports/other.stl')]: encodeText('solid'),
+      [cdnUrl('o', 'r', 'main', 'big.png')]: encodeText('png'),
+    });
+    const repo = await loadRepo(net, 'o', 'r', undefined, { maxFiles: 100, maxBytes: 40, maxFileBytes: 1e9 });
+    expect([...repo.files.keys()].sort()).toEqual(['exports/part.stl', 'm.scad']);
+    expect(net.calls.some((u) => u.includes('other.stl'))).toBe(false);
+    const skipped = repo.warnings.find((w) => w.startsWith('Skipped'));
+    expect(skipped).toBe('Skipped 1 file(s): big.png (repo size limit reached)');
+  });
+});
