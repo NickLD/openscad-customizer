@@ -1,20 +1,27 @@
 import { expect, test } from '@playwright/test';
-import { fakeGitHub } from './fixtures';
+import { blockedRequests, fakeGitHub } from './fixtures';
 
-test.beforeEach(async ({ page }) => fakeGitHub(page));
+test.beforeEach(async ({ page }) => {
+  blockedRequests.length = 0;
+  await fakeGitHub(page);
+});
+test.afterEach(() => {
+  expect(blockedRequests, 'requests to unfaked hosts').toEqual([]);
+});
 
 test('customize the gland: form, live preview, export, share link', async ({ page }) => {
   await page.goto('#/gh/demo/gland/cable_gland.scad');
   await expect(page.getByText('Cables', { exact: true })).toBeVisible();
   await expect(page.getByTestId('render-status')).toHaveText('Ready', { timeout: 30_000 });
   const sizeBefore = await page.getByTestId('model-size').textContent();
+  expect(sizeBefore).toMatch(/^\d+\.\d × \d+\.\d × \d+\.\d mm$/);
 
   await page.getByText('Cables', { exact: true }).click(); // open the group if collapsed
   await page.getByLabel('cable_count value', { exact: true }).fill('3');
   await page.getByLabel('cable_count value', { exact: true }).press('Enter');
   await expect(page).toHaveURL(/cable_count=3/);
+  await expect(page.getByTestId('model-size')).not.toHaveText(sizeBefore!, { timeout: 30_000 });
   await expect(page.getByTestId('render-status')).toHaveText('Ready', { timeout: 30_000 });
-  expect(await page.getByTestId('model-size').textContent()).not.toBe(sizeBefore);
 
   const download = page.waitForEvent('download');
   await page.getByTestId('export-stl').click();
@@ -57,7 +64,7 @@ test('source drawer edits re-render', async ({ page }) => {
   await page.keyboard.press('Control+End');
   await page.keyboard.type('\ntranslate([20,0,0]) cube(1);');
   await expect(page.getByText('Edited locally – not saved to repo')).toBeVisible();
-  await expect(page.getByTestId('model-size')).not.toHaveText('10.0 × 10.0 × 10.0 mm', { timeout: 30_000 });
+  await expect(page.getByTestId('model-size')).toHaveText('26.0 × 10.0 × 10.0 mm', { timeout: 30_000 });
 });
 
 test('mobile layout puts the viewer above the form', async ({ page }) => {
