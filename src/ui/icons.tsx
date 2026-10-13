@@ -17,6 +17,13 @@ export const CodeIcon = () => (
   </svg>
 );
 
+export const TerminalIcon = () => (
+  <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...stroke}>
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M6 9l3 3-3 3M12 15h6" />
+  </svg>
+);
+
 export const PlusIcon = () => (
   <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...stroke}>
     <path d="M12 5v14M5 12h14" />

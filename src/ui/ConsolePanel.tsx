@@ -1,4 +1,5 @@
 import type { AppController } from '../app/controller';
+import { TerminalIcon } from './icons';
 
 const MARKER = { error: '✖', warning: '⚠' } as const;
 
@@ -11,7 +12,8 @@ export function ConsolePanel({ ctl, open, onToggle, onJumpToLine }: Props) {
   const entry = ctl.entry.value;
   return (
     <section class={`console${open ? ' open' : ''}`}>
-      <button type="button" data-testid="console-toggle" aria-expanded={open} onClick={onToggle}>
+      <button type="button" class="with-icon" data-testid="console-toggle" aria-expanded={open} onClick={onToggle}>
+        <TerminalIcon />
         Console {errors > 0 && <span class="badge error">{errors}</span>} {warnings > 0 && <span class="badge warning">{warnings}</span>}
       </button>
       {open && (
