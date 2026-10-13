@@ -1,8 +1,10 @@
 import type { ComponentChildren } from 'preact';
+import { useState } from 'preact/hooks';
 import type { AppController, RenderState } from '../app/controller';
 import { ConsolePanel } from './ConsolePanel';
 import { ExportBar } from './ExportBar';
 import { ParamForm } from './ParamForm';
+import { ProblemsOverlay } from './ProblemsOverlay';
 import { formatSeconds, RenderOverlay } from './RenderOverlay';
 import { isDark } from './theme';
 import { Viewer } from './viewer/Viewer';
@@ -22,6 +24,9 @@ export function ModelView({ ctl, drawer, onJumpToLine }: { ctl: AppController; d
   const presets = Object.keys(ctl.presets.value);
   // Blur the shown model whenever it no longer matches the current values.
   const stale = r.mesh !== null && (r.outdated || r.status === 'rendering');
+  const [consoleOpen, setConsoleOpen] = useState(false);
+  // The log describes the last finished render; hide it while newer values are pending.
+  const problemsVisible = r.status === 'error' || (r.status === 'ready' && !r.outdated);
   return (
     <main class="model-view">
       <aside class="params">
@@ -42,10 +47,11 @@ export function ModelView({ ctl, drawer, onJumpToLine }: { ctl: AppController; d
         <Viewer mesh={r.mesh} fitKey={ctl.meshVersion.value} dark={isDark.value} />
         <RenderOverlay render={r} engineReady={ctl.engineReady.value} onCancel={() => ctl.cancelRender()} />
         <ExportBar ctl={ctl} />
+        <ProblemsOverlay log={ctl.log.value} visible={problemsVisible} onShowConsole={() => setConsoleOpen(true)} />
         <span class={`status ${r.status}`} data-testid="render-status">{statusText(r)}</span>
         {drawer}
       </section>
-      <ConsolePanel ctl={ctl} onJumpToLine={onJumpToLine} />
+      <ConsolePanel ctl={ctl} open={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} onJumpToLine={onJumpToLine} />
     </main>
   );
 }

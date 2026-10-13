@@ -89,6 +89,32 @@ describe('App', () => {
       return c;
     }
 
+    it('overlays render warnings on the 3D view and opens the Console from there', () => {
+      const c = modelCtl();
+      c.render.value = { status: 'ready', mesh, outdated: false, seconds: 1 };
+      c.log.value = [
+        { level: 'echo', text: '"Cables: 4"' },
+        { level: 'warning', text: '"WARNING: Only -1.17 mm between cable holes and thread root."', echoed: true },
+        { level: 'info', text: 'Rendered in 5 ms' },
+      ];
+      render(<App ctl={c} />);
+      const overlay = screen.getByRole('status', { name: '1 warning' });
+      expect(overlay.closest('.viewer')).toBeTruthy();
+      expect(overlay.textContent).toContain('WARNING: Only -1.17 mm between cable holes and thread root.');
+      fireEvent.click(screen.getByText('Show in Console'));
+      const line = document.querySelector('.console li.warning')!;
+      expect(line.textContent).toContain('⚠');
+      expect(document.querySelector('.console li.echo')!.textContent).not.toContain('⚠');
+    });
+
+    it('hides the overlay while the model is stale', () => {
+      const c = modelCtl();
+      c.render.value = { status: 'ready', mesh, outdated: true };
+      c.log.value = [{ level: 'warning', text: 'old' }];
+      render(<App ctl={c} />);
+      expect(screen.queryByRole('status', { name: '1 warning' })).toBeNull();
+    });
+
     it('labels the source button clearly', () => {
       render(<App ctl={modelCtl()} />);
       const btn = screen.getByTestId('source-toggle');

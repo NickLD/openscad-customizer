@@ -1,7 +1,18 @@
 export type LogLevel = 'echo' | 'warning' | 'error' | 'info';
-export type LogLine = { level: LogLevel; text: string; file?: string; line?: number };
+/** `echoed`: a script reported this itself with echo("WARNING: …"), a common OpenSCAD convention. */
+export type LogLine = { level: LogLevel; text: string; file?: string; line?: number; echoed?: true };
 
 const NOISE = [/^Could not initialize localization/, /^Fontconfig (error|warning)/];
+/** echo() output that starts with WARNING / ERROR / DEPRECATED in capitals, or any case followed by a colon. */
+const ECHO_PROBLEM = [/^"?\s*(WARNING|ERROR|DEPRECATED)\b/, /^"?\s*(warning|error|deprecated)\s*:/i];
+
+function echoLevel(text: string): LogLevel {
+  for (const re of ECHO_PROBLEM) {
+    const m = re.exec(text);
+    if (m) return m[1].toUpperCase() === 'ERROR' ? 'error' : 'warning';
+  }
+  return 'echo';
+}
 const TAGGED = /^(ECHO|WARNING|ERROR|TRACE):\s?(.*)$/;
 const LOCATION = /in file ([^,]+), line (\d+)/;
 const EMPTY = 'Current top level object is empty.';
@@ -20,6 +31,10 @@ export function parseLog(lines: string[]): LogLine[] {
       level = 'warning';
     }
     const entry: LogLine = { level, text };
+    if (level === 'echo') {
+      entry.level = echoLevel(text);
+      if (entry.level !== 'echo') entry.echoed = true;
+    }
     const loc = LOCATION.exec(text);
     if (loc) {
       entry.file = loc[1];
