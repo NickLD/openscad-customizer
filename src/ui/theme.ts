@@ -10,9 +10,10 @@ const stored = (() => {
 })();
 const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
 
+let manual = stored !== null;
 export const isDark = signal(stored ? stored === 'dark' : !!media?.matches);
 media?.addEventListener('change', (e) => {
-  if (!stored) isDark.value = e.matches;
+  if (!manual) isDark.value = e.matches;
 });
 
 effect(() => {
@@ -20,6 +21,7 @@ effect(() => {
 });
 
 export function toggleTheme(): void {
+  manual = true;
   isDark.value = !isDark.value;
   try {
     localStorage.setItem(KEY, isDark.value ? 'dark' : 'light');

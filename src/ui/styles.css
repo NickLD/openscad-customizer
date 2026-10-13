@@ -81,6 +81,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--focus); text
 @media (max-width: 768px) {
   .model-view { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr auto; grid-template-areas: 'viewer' 'params' 'console'; }
   .params { border-right: 0; padding-bottom: 72px; }
+  .console { margin-bottom: 64px; }
   .export-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 16px; background: var(--panel); border-top: 1px solid var(--border); justify-content: center; z-index: 5; }
   .export-bar button { flex: 1; }
 }

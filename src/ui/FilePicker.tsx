@@ -1,4 +1,5 @@
 import type { AppController } from '../app/controller';
+import { modelHash } from './links';
 import { cdnUrl } from '../repo/repoLoader';
 
 export function FilePicker({ ctl }: { ctl: AppController }) {
@@ -9,7 +10,7 @@ export function FilePicker({ ctl }: { ctl: AppController }) {
       {ctl.candidates.value.length === 0 && <p role="alert">No OpenSCAD models found in {repo.owner}/{repo.repo}.</p>}
       <div class="cards">
         {ctl.candidates.value.map((c) => (
-          <a key={c.path} class="card" data-testid="picker-card" href={`#/gh/${repo.owner}/${repo.repo}/${c.path.split('/').map(encodeURIComponent).join('/')}`}>
+          <a key={c.path} class="card" data-testid="picker-card" href={modelHash(repo.owner, repo.repo, c.path)}>
             {c.thumbnail ? <img src={cdnUrl(repo.owner, repo.repo, repo.ref, c.thumbnail)} alt="" loading="lazy" /> : <div class="placeholder">◧</div>}
             <h3>{c.title}</h3>
             {c.description && <p>{c.description}</p>}

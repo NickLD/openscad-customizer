@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { AppController } from '../app/controller';
+import { modelHash } from './links';
 import { isDark, toggleTheme } from './theme';
 
 export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSource(): void }) {
@@ -17,10 +18,10 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
   };
   return (
     <header class="app-header">
-      <a class="brand" href="#">◧</a>
+      <a class="brand" href="#" aria-label="Home">◧</a>
       <h1>{title}</h1>
       {ctl.phase.value === 'model' && ctl.candidates.value.length > 1 && (
-        <select aria-label="Model" value={ctl.entry.value ?? ''} onChange={(e) => (location.hash = `#/gh/${repo!.owner}/${repo!.repo}/${e.currentTarget.value}`)}>
+        <select aria-label="Model" value={ctl.entry.value ?? ''} onChange={(e) => (location.hash = modelHash(repo!.owner, repo!.repo, e.currentTarget.value))}>
           {ctl.candidates.value.map((c) => <option key={c.path} value={c.path}>{c.title}</option>)}
         </select>
       )}
