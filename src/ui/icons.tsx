@@ -24,6 +24,13 @@ export const TerminalIcon = () => (
   </svg>
 );
 
+export const GridIcon = () => (
+  <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...stroke}>
+    <rect x="3" y="3" width="18" height="18" rx="1" />
+    <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+  </svg>
+);
+
 export const PlusIcon = () => (
   <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...stroke}>
     <path d="M12 5v14M5 12h14" />

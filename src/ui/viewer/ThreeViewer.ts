@@ -1,19 +1,23 @@
 import {
-  AmbientLight, Color, DirectionalLight, GridHelper, Material, Mesh as ThreeMesh, MeshStandardMaterial,
-  PerspectiveCamera, Scene, Vector3, WebGLRenderer,
+  AmbientLight, BufferGeometry, Color, DirectionalLight, Float32BufferAttribute, Group, LineBasicMaterial, LineSegments,
+  Mesh as ThreeMesh, MeshStandardMaterial, PerspectiveCamera, Scene, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Mesh } from '../../mesh/off';
+import { gridLines, type GridSpec } from './gridSpec';
 import { meshToGeometry } from './meshGeometry';
 
 const MODEL_COLOR = 0xf9d72c; // OpenSCAD default
+const GRID_COLORS = { light: { minor: 0xd3d7dd, major: 0x9aa1ab }, dark: { minor: 0x2e323a, major: 0x4c525c } };
 
 export class ThreeViewer {
   private renderer: WebGLRenderer;
   private scene = new Scene();
   private camera = new PerspectiveCamera(40, 1, 0.1, 10000);
   private controls: OrbitControls;
-  private grid: GridHelper;
+  private grid = new Group();
+  private gridMinor = new LineBasicMaterial({ color: GRID_COLORS.light.minor });
+  private gridMajor = new LineBasicMaterial({ color: GRID_COLORS.light.major });
   private model: ThreeMesh | null = null;
   private observer: ResizeObserver;
   private frame = 0;
@@ -32,8 +36,6 @@ export class ThreeViewer {
     key.position.set(1, -1.5, 2);
     this.camera.add(key);
     this.scene.add(this.camera);
-    this.grid = new GridHelper(200, 20);
-    this.grid.rotation.x = Math.PI / 2; // XY plane
     this.scene.add(this.grid);
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
@@ -42,7 +44,33 @@ export class ThreeViewer {
 
   setDark(dark: boolean): void {
     this.scene.background = new Color(dark ? 0x1b1d22 : 0xeef0f3);
+    const colors = dark ? GRID_COLORS.dark : GRID_COLORS.light;
+    this.gridMinor.color.setHex(colors.minor);
+    this.gridMajor.color.setHex(colors.major);
     this.requestRender();
+  }
+
+  /** Rebuilds the print-bed grid; `null` (no model yet) leaves it empty. */
+  setGrid(spec: GridSpec | null, visible: boolean): void {
+    if (this.disposed) return;
+    this.clearGrid();
+    if (spec) {
+      const { minor, major } = gridLines(spec);
+      for (const [points, material] of [[minor, this.gridMinor], [major, this.gridMajor]] as const) {
+        const geometry = new BufferGeometry();
+        geometry.setAttribute('position', new Float32BufferAttribute(points, 3));
+        this.grid.add(new LineSegments(geometry, material));
+      }
+    }
+    this.grid.visible = visible;
+    this.requestRender();
+  }
+
+  private clearGrid(): void {
+    for (const child of [...this.grid.children]) {
+      this.grid.remove(child);
+      (child as LineSegments).geometry.dispose();
+    }
   }
 
   setMesh(mesh: Mesh | null, refit: boolean): void {
@@ -53,8 +81,6 @@ export class ThreeViewer {
       const material = new MeshStandardMaterial({ color: mesh.colors ? 0xffffff : MODEL_COLOR, vertexColors: !!mesh.colors, roughness: 0.55, metalness: 0.05 });
       this.model = new ThreeMesh(geometry, material);
       this.scene.add(this.model);
-      const box = geometry.boundingBox!;
-      if (Number.isFinite(box.min.z)) this.grid.position.z = box.min.z; // empty mesh has no finite box
       if (refit) this.fit();
     }
     this.requestRender();
@@ -105,8 +131,9 @@ export class ThreeViewer {
     this.observer.disconnect();
     this.controls.dispose();
     this.clearModel();
-    this.grid.geometry.dispose();
-    (this.grid.material as Material).dispose();
+    this.clearGrid();
+    this.gridMinor.dispose();
+    this.gridMajor.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();
     this.renderer.domElement.remove();
