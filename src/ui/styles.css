@@ -47,7 +47,7 @@ a.button:not(.primary) { padding: 6px 12px; border: 1px solid var(--border); bor
   .header-actions { gap: 6px; }
   .header-actions button, .header-actions a.button { padding: 6px 8px; }
 }
-.share-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; width: 400px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px rgb(0 0 0 / 0.18); display: flex; flex-direction: column; gap: 8px; animation: fade-in 120ms ease-out; }
+.share-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; width: 400px; max-width: calc(100vw - 32px); white-space: normal; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px rgb(0 0 0 / 0.18); display: flex; flex-direction: column; gap: 8px; animation: fade-in 120ms ease-out; }
 .share-panel h2 { margin: 0 0 4px; font-size: 15px; }
 .share-panel label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .share-panel label:has(input:disabled) { color: var(--muted); }

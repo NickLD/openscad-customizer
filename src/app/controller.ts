@@ -329,7 +329,9 @@ export class AppController {
       if (!keepOnFail) this.params.value = [];
       return false;
     }
-    this.paramLog = result.log.filter((l) => l.level !== 'info');
+    // Reading parameters evaluates the script with default values, so its echoes & warnings would
+    // contradict the render's. Keep only errors: those mean the script itself is broken.
+    this.paramLog = result.log.filter((l) => l.level === 'error');
     let set: ParamSet | null = null;
     if (result.exitCode === 0 && result.output) {
       try {

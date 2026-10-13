@@ -272,6 +272,23 @@ describe('AppController', () => {
     expect(fe.renders()).toHaveLength(0);
   });
 
+  it('shows only the render pass output, not echoes from reading parameters with default values', async () => {
+    const { ctl, fe } = make();
+    fe.cfg.params = () => ({
+      exitCode: 0, output: encodeText(JSON.stringify(SET)), ms: 1,
+      log: [{ level: 'echo', text: '"Cables: 1"' }, { level: 'warning', text: 'from defaults' }, { level: 'error', text: 'Parser error', file: '/repo/g.scad', line: 2 }],
+    });
+    await ctl.open('#/gh/o/r/g.scad?cable_count=4');
+    await vi.advanceTimersByTimeAsync(0);
+    fe.renders()[0].resolve({ ...ok(), log: [{ level: 'echo', text: '"Cables: 4"' }] });
+    await vi.advanceTimersByTimeAsync(0);
+    const texts = ctl.log.value.map((l) => l.text);
+    expect(texts).toContain('"Cables: 4"');
+    expect(texts).not.toContain('"Cables: 1"');
+    expect(texts).not.toContain('from defaults');
+    expect(texts).toContain('Parser error'); // errors from reading the script still matter
+  });
+
   it('logs the render time after a successful render', async () => {
     const { ctl, fe } = make();
     await ctl.open('#/gh/o/r/g.scad');
