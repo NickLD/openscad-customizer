@@ -22,17 +22,21 @@ function repo(files: Record<string, string>): LoadedRepo {
 type Call = { job: Job; signal?: AbortSignal; resolve(r: JobResult): void; reject(e: Error): void };
 function fakeEngine() {
   const calls: Call[] = [];
+  const cfg: { params: () => JobResult; hold: boolean } = {
+    params: () => ({ exitCode: 0, output: encodeText(JSON.stringify(SET)), log: [], ms: 1 }),
+    hold: false,
+  };
   const engine: Engine = {
     run(job, signal) {
       return new Promise((resolve, reject) => {
         const call = { job, signal, resolve, reject };
         calls.push(call);
         signal?.addEventListener('abort', () => reject(new AbortedError()));
-        if (job.kind === 'params') resolve({ exitCode: 0, output: encodeText(JSON.stringify(SET)), log: [], ms: 1 });
+        if (job.kind === 'params' && !cfg.hold) resolve(cfg.params());
       });
     },
   };
-  return { engine, calls, renders: () => calls.filter((c) => c.job.kind === 'render') };
+  return { engine, calls, cfg, params: () => calls.filter((c) => c.job.kind === 'params'), renders: () => calls.filter((c) => c.job.kind === 'render') };
 }
 const ok = (): JobResult => ({ exitCode: 0, output: encodeText(OFF), log: [{ level: 'echo', text: 'hi' }], ms: 5 });
 
@@ -164,5 +168,90 @@ describe('AppController', () => {
     const paramsJobs = fe.calls.filter((c) => c.job.kind === 'params');
     expect(paramsJobs).toHaveLength(2);
     expect(new TextDecoder().decode(paramsJobs[1].job.files.get('/repo/g.scad'))).toBe('cable_count = 2; // [1:8]');
+  });
+
+  const ORIG_SRC = ['/* [Cables] */', 'cable_count = 1; // [1:8]'].join('\n');
+  const dec = (b?: Uint8Array) => new TextDecoder().decode(b);
+  const SET2: ParamSet = { title: 'g', parameters: [
+    { name: 'cable_count', group: 'Cables', type: 'number', initial: 1, min: 1, max: 8, step: 1 },
+    { name: 'wall', group: 'Cables', type: 'number', initial: 2, min: 1, max: 5, step: 1 },
+  ] };
+
+  it('source edit updates params, keeps surviving values and renders the edited source', async () => {
+    const { ctl, fe } = make();
+    await ctl.open('#/gh/o/r/g.scad?cable_count=4');
+    await vi.advanceTimersByTimeAsync(0);
+    fe.cfg.params = () => ({ exitCode: 0, output: encodeText(JSON.stringify(SET2)), log: [], ms: 1 });
+    ctl.setSource('edited');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(ctl.params.value.map((p) => p.name)).toEqual(['cable_count', 'wall']);
+    expect(ctl.values.value).toEqual({ cable_count: 4, wall: 2 });
+    const r = fe.renders().at(-1)!;
+    expect(dec(r.job.files.get('/repo/g.scad'))).toBe('edited');
+    expect(r.job).toMatchObject({ values: { cable_count: 4, wall: 2 } });
+  });
+
+  it('setValue during the source debounce still re-extracts and renders once with the latest value', async () => {
+    const { ctl, fe } = make();
+    await ctl.open('#/gh/o/r/g.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    const before = fe.renders().length;
+    ctl.setSource('edited');
+    ctl.setValue('cable_count', 6);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(fe.params()).toHaveLength(2);
+    expect(fe.renders()).toHaveLength(before + 1);
+    expect(fe.renders().at(-1)!.job).toMatchObject({ values: { cable_count: 6 } });
+  });
+
+  it('failed extraction during an edit keeps params, values and the link', async () => {
+    const { ctl, fe, setHash } = make();
+    await ctl.open('#/gh/o/r/g.scad?cable_count=4');
+    await vi.advanceTimersByTimeAsync(0);
+    fe.cfg.params = () => ({ exitCode: 1, output: null, log: [{ level: 'error', text: 'syntax error' }], ms: 1 });
+    ctl.setSource('broken(');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(ctl.params.value.map((p) => p.name)).toEqual(['cable_count', 'part']);
+    expect(ctl.values.value).toEqual({ cable_count: 4, part: 'all' });
+    expect(ctl.hash()).toContain('cable_count=4');
+    expect(setHash).toHaveBeenLastCalledWith(expect.stringContaining('cable_count=4'));
+    expect(fe.renders().at(-1)!.job.files.get('/repo/g.scad')).toBeDefined(); // still renders so the Console shows the error
+  });
+
+  it('setSource(null) discards edits', async () => {
+    const { ctl, fe } = make();
+    await ctl.open('#/gh/o/r/g.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    ctl.setSource('edited');
+    await vi.advanceTimersByTimeAsync(500);
+    ctl.setSource(null);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(dec(fe.renders().at(-1)!.job.files.get('/repo/g.scad'))).toBe(ORIG_SRC);
+    expect(ctl.entrySource()).toBe(ORIG_SRC);
+  });
+
+  it('a superseded open does not flip the phase, rewrite the hash or render', async () => {
+    const { ctl, fe, setHash } = make();
+    fe.cfg.hold = true;
+    const first = ctl.open('#/gh/o/r/g.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    await ctl.open('#/');
+    expect(ctl.phase.value).toBe('landing');
+    fe.cfg.hold = false;
+    fe.params()[0].resolve({ exitCode: 0, output: encodeText(JSON.stringify(SET)), log: [], ms: 1 });
+    await first;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(ctl.phase.value).toBe('landing');
+    expect(setHash).not.toHaveBeenCalled();
+    expect(fe.renders()).toHaveLength(0);
+  });
+
+  it('logs the render time after a successful render', async () => {
+    const { ctl, fe } = make();
+    await ctl.open('#/gh/o/r/g.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    fe.renders()[0].resolve(ok());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctl.log.value).toContainEqual({ level: 'info', text: 'Rendered in 5 ms' });
   });
 });

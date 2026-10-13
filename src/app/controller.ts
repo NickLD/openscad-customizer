@@ -60,6 +60,8 @@ export class AppController {
   private abort: AbortController | null = null;
   private seq = 0;
   private openSeq = 0;
+  private gen = 0;
+  private sourceDirty = false;
   private paramLog: LogLine[] = [];
   private pinnedRef: string | undefined;
 
@@ -110,14 +112,17 @@ export class AppController {
   }
 
   async openFile(path: string, init: { preset?: string; values?: Record<string, string> } = {}): Promise<void> {
+    const token = this.openSeq;
     this.cancelRender();
+    this.sourceDirty = false;
     this.entry.value = path;
     this.editedSource.value = null;
     this.meshVersion.value++;
     this.render.value = { status: 'idle', mesh: null, outdated: false };
     const presetFile = this.repo.value?.files.get(path.replace(/\.scad$/i, '.json'));
     this.presets.value = presetFile ? parsePresets(decodeText(presetFile)) : {};
-    await this.extractParams();
+    const extracted = await this.extractParams(false);
+    if (token !== this.openSeq) return;
 
     const params = this.params.value;
     let values = { ...this.defaults.value };
@@ -135,6 +140,7 @@ export class AppController {
     rejected.push(...fromUrl.rejected);
     this.values.value = values;
     if (rejected.length) this.paramLog = [...this.paramLog, { level: 'warning', text: `Ignored from the link: ${rejected.join(', ')}` }];
+    if (!extracted) this.paramLog = [...this.paramLog, { level: 'error', text: "Couldn't read parameters. See the messages above." }];
     this.log.value = this.paramLog;
     this.phase.value = 'model';
     this.syncHash();
@@ -167,21 +173,14 @@ export class AppController {
   /** `null` discards local edits. */
   setSource(text: string | null): void {
     this.editedSource.value = text;
+    this.sourceDirty = true;
     this.markOutdated();
-    this.clearTimer();
-    this.abort?.abort();
-    this.timer = setTimeout(async () => {
-      await this.extractParams();
-      // Keep values for parameters that still exist; new ones get their defaults.
-      const defaults = this.defaults.value;
-      this.values.value = Object.fromEntries(Object.entries(defaults).map(([k, d]) => [k, k in this.values.value ? this.values.value[k] : d]));
-      this.syncHash();
-      this.doRender();
-    }, this.deps.debounceMs);
+    this.scheduleRender(this.deps.debounceMs);
   }
 
   cancelRender(): void {
     this.clearTimer();
+    this.gen++;
     this.abort?.abort();
     this.abort = null;
     this.seq++;
@@ -227,25 +226,52 @@ export class AppController {
     return files;
   }
 
-  private async extractParams(): Promise<void> {
+  /** Returns true when parameters were read. With `keepOnFail`, a failure leaves params untouched. */
+  private async extractParams(keepOnFail: boolean): Promise<boolean> {
     const entry = this.entry.value!;
     const job: Job = { kind: 'params', files: this.files(), entry: REPO_ROOT + entry };
     let result: JobResult;
     try {
       result = await this.deps.engine.run(job);
     } catch (e) {
-      this.paramLog = [{ level: 'error', text: `Couldn't read parameters: ${String(e)}` }];
-      this.params.value = [];
-      return;
+      this.paramLog = [{ level: 'error', text: `Couldn't read parameters: ${e instanceof Error ? e.message : String(e)}` }];
+      if (!keepOnFail) this.params.value = [];
+      return false;
     }
     this.paramLog = result.log.filter((l) => l.level !== 'info');
     let set: ParamSet | null = null;
-    try {
-      set = result.output ? (JSON.parse(decodeText(result.output)) as ParamSet) : null;
-    } catch {
-      set = null;
+    if (result.exitCode === 0 && result.output) {
+      try {
+        set = JSON.parse(decodeText(result.output)) as ParamSet;
+      } catch {
+        set = null;
+      }
     }
-    this.params.value = set?.parameters ?? [];
+    if (!set || !Array.isArray(set.parameters)) {
+      if (!keepOnFail) this.params.value = [];
+      return false;
+    }
+    this.params.value = set.parameters;
+    return true;
+  }
+
+  private async runScheduled(): Promise<void> {
+    const gen = this.gen;
+    if (this.sourceDirty) {
+      this.sourceDirty = false;
+      const token = this.openSeq;
+      const entry = this.entry.value;
+      const ok = await this.extractParams(true);
+      if (token !== this.openSeq || entry !== this.entry.value) return;
+      if (ok) {
+        // Keep values for parameters that still exist; new ones get their defaults.
+        const current = this.values.value;
+        this.values.value = Object.fromEntries(Object.entries(this.defaults.value).map(([k, d]) => [k, k in current ? current[k] : d]));
+      }
+      this.syncHash();
+      if (gen !== this.gen) return; // a newer schedule or a cancel took over
+    }
+    await this.doRender();
   }
 
   private changed(): void {
@@ -269,14 +295,16 @@ export class AppController {
 
   private scheduleRender(delay: number): void {
     this.clearTimer();
+    this.gen++;
     this.abort?.abort();
     this.abort = null;
-    this.timer = setTimeout(() => this.doRender(), delay);
+    this.timer = setTimeout(() => void this.runScheduled(), delay);
   }
 
   private async doRender(): Promise<void> {
     const entry = this.entry.value;
     if (!entry) return;
+    this.abort?.abort();
     const seq = ++this.seq;
     const abort = new AbortController();
     this.abort = abort;
@@ -286,7 +314,7 @@ export class AppController {
       result = await this.deps.engine.run({ kind: 'render', files: this.files(), entry: REPO_ROOT + entry, values: this.values.value }, abort.signal);
     } catch (e) {
       if (e instanceof AbortedError || seq !== this.seq) return;
-      this.render.value = { ...this.render.value, status: 'error', outdated: true, message: String(e) };
+      this.render.value = { ...this.render.value, status: 'error', outdated: true, message: e instanceof Error ? e.message : String(e) };
       return;
     }
     if (seq !== this.seq) return;
