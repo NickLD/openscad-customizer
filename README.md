@@ -39,10 +39,13 @@ Your script needs nothing special: standard customizer comments (`/* [Tab] */`, 
 
 - `files` limits and orders the model list. Without it, every `.scad` file with customizer annotations is listed.
 - `libraries` maps an include root (`include <mylib/…>`) to another GitHub repo.
+- `thumbnail` (like `path`) is relative to the repo root, not to the manifest or the model.
 
 Bundled libraries (loaded on demand): BOSL2, BOSL, MCAD, NopSCADlib, Round-Anything, funcutils, `threads.scad`, `smooth_prim.scad`, and Liberation fonts for `text()`.
 
-Limits: public repos only; 300 files / 25 MB per repo.
+Limits: public repos only; 300 files / 25 MB per repo. `.scad` and `.json` files are fetched first; other files (STL, PNG, SVG, DXF, …) are downloaded only when a script mentions their file name (for example `import("parts/base.stl")`), so large render or export files in a model repo cost nothing.
+
+Exported STL and 3MF meshes come from OpenSCAD's OFF output, which has 6 significant digits: about 0.001 mm of rounding on a 100 mm part.
 
 ## Development
 

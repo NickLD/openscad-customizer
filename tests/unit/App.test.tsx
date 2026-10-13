@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { parseOff } from '../../src/mesh/off';
 import { AppController } from '../../src/app/controller';
 import { App } from '../../src/ui/App';
+import { EditorView } from '@codemirror/view';
+
+// jsdom has no layout; CodeMirror measures ranges when scrolling a selection into view.
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 vi.mock('../../src/ui/viewer/Viewer', () => ({ Viewer: () => <div data-testid="viewer" /> }));
 
@@ -19,6 +24,19 @@ describe('App', () => {
     fireEvent.input(screen.getByTestId('github-input'), { target: { value: 'https://github.com/someone/thing/blob/main/a.scad' } });
     fireEvent.submit(screen.getByTestId('github-input').closest('form')!);
     expect(location.hash).toBe('#/gh/someone/thing@main/a.scad');
+  });
+
+  it('links the bundled libraries, OpenSCAD and the app source in the footer', () => {
+    render(<App ctl={ctl()} />);
+    const links = [...document.querySelectorAll('footer.about a')] as HTMLAnchorElement[];
+    const hrefs = links.map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('https://github.com/openscad/openscad');
+    expect(hrefs).toContain('https://github.com/NickLD/openscad-customizer');
+    expect(hrefs).toContain('https://github.com/BelfrySCAD/BOSL2');
+    expect(hrefs).toContain('https://github.com/shantigilbert/liberation-fonts-ttf');
+    expect(links).toHaveLength(11); // 8 libraries, fonts, OpenSCAD, source
+    for (const a of links) expect(a.rel).toBe('noopener noreferrer');
+    expect(document.querySelector('footer.about')!.textContent).toContain('GPL-2.0-or-later');
   });
 
   it('shows load errors', () => {
@@ -77,6 +95,26 @@ describe('App', () => {
       fireEvent.click(screen.getByTestId('share-link'));
       await screen.findByText('Copied!');
       expect(order).toEqual(['flush', 'copy']);
+    });
+
+    it('jumps again on a repeated click and not when the drawer is reopened', async () => {
+      const c = modelCtl();
+      c.repo.value = { owner: 'o', repo: 'r', ref: 'main', stale: false, warnings: [], manifest: null, files: new Map([['a.scad', new TextEncoder().encode('a\nb\nc\nd\n')]]) };
+      c.log.value = [{ level: 'error', text: 'boom', file: '/repo/a.scad', line: 3 }];
+      const focus = vi.spyOn(EditorView.prototype, 'focus');
+      render(<App ctl={c} />);
+      fireEvent.click(screen.getByTestId('console-toggle'));
+      fireEvent.click(screen.getByText('line 3'));
+      await screen.findByRole('dialog', { name: 'Source' });
+      await vi.waitFor(() => expect(focus).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByText('line 3'));
+      await vi.waitFor(() => expect(focus).toHaveBeenCalledTimes(2));
+      fireEvent.click(screen.getByLabelText('Close source'));
+      fireEvent.click(screen.getByTestId('source-toggle'));
+      await screen.findByRole('dialog', { name: 'Source' });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(focus).toHaveBeenCalledTimes(2);
+      focus.mockRestore();
     });
 
     it('cancels a running render', () => {

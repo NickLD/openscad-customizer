@@ -3,11 +3,12 @@ import { EditorView } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { useEffect, useRef } from 'preact/hooks';
 import type { AppController } from '../app/controller';
+import type { JumpRequest } from './App';
 import { encodeText } from '../util';
 import { downloadBytes } from './download';
 import { scadLanguage } from './scadLanguage';
 
-export function SourceDrawer({ ctl, jumpTo, onClose }: { ctl: AppController; jumpTo: number | null; onClose(): void }) {
+export function SourceDrawer({ ctl, jump, onClose }: { ctl: AppController; jump: JumpRequest | null; onClose(): void }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const entry = ctl.entry.value;
@@ -27,11 +28,11 @@ export function SourceDrawer({ ctl, jumpTo, onClose }: { ctl: AppController; jum
 
   useEffect(() => {
     const v = view.current;
-    if (!v || !jumpTo || jumpTo > v.state.doc.lines) return;
-    const line = v.state.doc.line(jumpTo);
+    if (!v || !jump || jump.line < 1 || jump.line > v.state.doc.lines) return;
+    const line = v.state.doc.line(jump.line);
     v.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
     v.focus();
-  }, [jumpTo]);
+  }, [jump]);
 
   const edited = ctl.editedSource.value !== null;
   return (

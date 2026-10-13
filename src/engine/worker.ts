@@ -8,6 +8,8 @@ const scope = self as unknown as {
   postMessage(m: WorkerReply, transfer?: Transferable[]): void;
 };
 const base = import.meta.env.BASE_URL;
+/** SHA-256 prefix of the pinned OpenSCAD build (scripts/fetch-wasm.mjs): busts caches when the build changes. */
+const WASM_VERSION = '0968af31';
 let factory: Promise<OpenSCADFactory> | null = null;
 
 // compileStreaming needs the server to send Content-Type: application/wasm; fall back to a buffered compile.
@@ -23,8 +25,8 @@ function loadFactory(): Promise<OpenSCADFactory> {
   if (!factory) {
     factory = (async (): Promise<OpenSCADFactory> => {
       const [mod, wasmModule] = await Promise.all([
-        import(/* @vite-ignore */ `${base}wasm/openscad.js`),
-        compileWasm(`${base}wasm/openscad.wasm`),
+        import(/* @vite-ignore */ `${base}wasm/openscad.js?v=${WASM_VERSION}`),
+        compileWasm(`${base}wasm/openscad.wasm?v=${WASM_VERSION}`),
       ]);
       // Compile once, instantiate per job: each OpenSCAD run needs a fresh instance.
       return (opts: OpenSCADOptions) => new Promise<OpenSCADInstance>((resolve, reject) => {

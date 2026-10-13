@@ -24,10 +24,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: public/wasm
+          # SHA-256 prefix of the pinned build in scripts/fetch-wasm.mjs
+          key: openscad-wasm-0968af31
       - run: npm run fetch-wasm
       - run: npm run typecheck
       - run: npm test
       - run: npx playwright install --with-deps chromium
+      - run: npm run build
       - run: npm run e2e
         env:
           CI: '1'

@@ -1,6 +1,14 @@
+import { Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 import { FEATURED } from '../config';
+import { FONTS, REGISTRY } from '../repo/libraries';
 import { githubInputToRoute, serializeRoute } from '../router';
+
+const ext = { target: '_blank', rel: 'noopener noreferrer' } as const;
+const LIBRARIES = [
+  ...Object.values(REGISTRY).map((l) => ({ name: l.repo, url: `https://github.com/${l.owner}/${l.repo}` })),
+  { name: 'Liberation fonts', url: `https://github.com/${FONTS.owner}/${FONTS.repo}` },
+];
 
 export function Landing() {
   const [input, setInput] = useState('');
@@ -35,7 +43,10 @@ export function Landing() {
         <p>Optionally add <code>openscad-customizer.json</code> to your repo root for titles, thumbnails and extra libraries. Presets saved by OpenSCAD's customizer (<code>model.json</code> next to <code>model.scad</code>) show up automatically.</p>
       </section>
       <footer class="about">
-        Runs <a href="https://openscad.org" target="_blank" rel="noopener noreferrer">OpenSCAD</a> (GPL-2.0) in your browser. Bundled libraries are loaded from their GitHub repos under their own licenses: BOSL2, BOSL, MCAD, NopSCADlib, Round-Anything, funcutils, threads-scad, smooth-prim, Liberation fonts.
+        Runs <a href="https://github.com/openscad/openscad" {...ext}>OpenSCAD</a> (GPL-2.0) in your browser.
+        {' '}Bundled libraries are loaded from their GitHub repos under their own licenses:{' '}
+        {LIBRARIES.map((l, i) => <Fragment key={l.url}>{i > 0 && ', '}<a href={l.url} {...ext}>{l.name}</a></Fragment>)}.
+        {' '}This app is free software under GPL-2.0-or-later: <a href="https://github.com/NickLD/openscad-customizer" {...ext}>source</a>.
       </footer>
     </main>
   );
