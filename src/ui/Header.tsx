@@ -48,7 +48,7 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
               onClick={() => {
                 if (!sharing) ctl.flushHash(); // keep the address bar in step with what's being shared
                 setSharing(!sharing);
-              }}>Share…</button>
+              }}>Share a link to this</button>
             {sharing && <SharePanel ctl={ctl} />}
           </span>
           <button type="button" data-testid="source-toggle" onClick={onToggleSource}>&lt;/&gt; Src</button>
