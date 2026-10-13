@@ -76,7 +76,7 @@ describe('App', () => {
       expect(spy).toHaveBeenCalled();
     });
 
-    it('shows console badges, lists lines and jumps to a line', () => {
+    it('shows console badges, lists lines and jumps to a line', async () => {
       const c = modelCtl();
       c.log.value = [
         { level: 'error', text: 'boom', file: '/repo/a.scad', line: 3 },
@@ -89,7 +89,8 @@ describe('App', () => {
       fireEvent.click(toggle);
       expect(screen.getByText(/boom/)).toBeTruthy();
       expect(screen.getByText(/hmm/)).toBeTruthy();
-      fireEvent.click(screen.getByText('line 3')); // drawer is wired in Task 13; the button must render and click without error
+      fireEvent.click(screen.getByText('line 3'));
+      expect(await screen.findByRole('dialog', { name: 'Source' })).toBeTruthy();
     });
   });
 

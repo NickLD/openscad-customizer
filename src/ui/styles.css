@@ -85,3 +85,10 @@ button.link { border: 0; padding: 0; background: none; color: var(--focus); text
   .export-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 16px; background: var(--panel); border-top: 1px solid var(--border); justify-content: center; z-index: 5; }
   .export-bar button { flex: 1; }
 }
+
+.source-drawer { position: absolute; inset: 0 0 0 auto; width: min(640px, 100%); background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; z-index: 4; }
+.drawer-head { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.drawer-head .spacer { flex: 1; }
+.drawer-head .edited { color: var(--warning); font-size: 13px; }
+.editor { flex: 1; min-height: 0; overflow: auto; }
+.editor .cm-editor { height: 100%; }
