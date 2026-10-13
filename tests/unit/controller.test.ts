@@ -97,6 +97,17 @@ describe('AppController', () => {
     expect(ctl.hash()).toBe('#/gh/o/r/g.scad?preset=Three&cable_count=3');
   });
 
+  it('describes the current view for sharing', async () => {
+    const { ctl } = make();
+    await ctl.open('#/gh/o/r/g.scad?preset=Three');
+    expect(ctl.shareState()).toEqual({
+      owner: 'o', repo: 'r', sha: 'a'.repeat(40), entry: 'g.scad', title: 'g',
+      multipleModels: false, preset: 'Three', presetExact: true, changed: { cable_count: '3' },
+    });
+    ctl.setValue('cable_count', 5);
+    expect(ctl.shareState()).toMatchObject({ preset: 'Three', presetExact: false, changed: { cable_count: '5' } });
+  });
+
   it('debounces changes and cancels the in-flight render', async () => {
     const { ctl, fe } = make();
     await ctl.open('#/gh/o/r/g.scad');

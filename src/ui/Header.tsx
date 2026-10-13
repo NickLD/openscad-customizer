@@ -1,29 +1,36 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AppController } from '../app/controller';
 import { modelHash } from './links';
+import { SharePanel } from './SharePanel';
 import { isDark, toggleTheme } from './theme';
 
 export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSource(): void }) {
   // While another repo loads (or after a failure), don't show the previous repo's name.
   const phase = ctl.phase.value;
   const repo = phase === 'model' || phase === 'picker' ? ctl.repo.value : null;
-  const [copied, setCopied] = useState(false);
   const title = repo?.manifest?.title ?? (repo ? `${repo.owner}/${repo.repo}` : 'OpenSCAD Customizer');
-  const share = async () => {
-    ctl.flushHash(); // value changes update the URL on a debounce
-    try {
-      await navigator.clipboard.writeText(location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      prompt('Copy this link', location.href);
-    }
-  };
+  const [sharing, setSharing] = useState(false);
+  const shareWrap = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!sharing) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSharing(false);
+    const onPointer = (e: MouseEvent) => {
+      if (!shareWrap.current?.contains(e.target as Node)) setSharing(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onPointer);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onPointer);
+    };
+  }, [sharing]);
+
   return (
     <header class="app-header">
       <a class="brand" href="#" aria-label="Home">◧</a>
       <h1>{title}</h1>
-      {ctl.phase.value === 'model' && ctl.candidates.value.length > 1 && (
+      {phase === 'model' && ctl.candidates.value.length > 1 && (
         <select aria-label="Model" value={ctl.entry.value ?? ''} onChange={(e) => (location.hash = modelHash(repo!.owner, repo!.repo, e.currentTarget.value))}>
           {ctl.candidates.value.map((c) => <option key={c.path} value={c.path}>{c.title}</option>)}
         </select>
@@ -34,9 +41,16 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
         </a>
       )}
       <span class="spacer" />
-      {ctl.phase.value === 'model' && (
+      {phase === 'model' && (
         <>
-          <button type="button" data-testid="share-link" onClick={share}>{copied ? 'Copied!' : 'Share link'}</button>
+          <span class="share-wrap" ref={shareWrap}>
+            <button type="button" data-testid="share-link" aria-expanded={sharing} aria-haspopup="dialog"
+              onClick={() => {
+                if (!sharing) ctl.flushHash(); // keep the address bar in step with what's being shared
+                setSharing(!sharing);
+              }}>Share…</button>
+            {sharing && <SharePanel ctl={ctl} />}
+          </span>
           <button type="button" data-testid="source-toggle" onClick={onToggleSource}>&lt;/&gt; Src</button>
         </>
       )}

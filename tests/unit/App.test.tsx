@@ -96,16 +96,55 @@ describe('App', () => {
       expect(document.querySelector('.app-header')!.textContent).not.toContain('old/thing');
     });
 
-    it('Share link flushes the pending URL update before copying it', async () => {
-      const c = modelCtl();
-      const order: string[] = [];
-      vi.spyOn(c, 'flushHash').mockImplementation(() => void order.push('flush'));
-      const writeText = vi.fn(async () => void order.push('copy'));
-      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-      render(<App ctl={c} />);
-      fireEvent.click(screen.getByTestId('share-link'));
-      await screen.findByText('Copied!');
-      expect(order).toEqual(['flush', 'copy']);
+    describe('share panel', () => {
+      const SHA = 'b'.repeat(40);
+      function shareCtl() {
+        const c = modelCtl();
+        c.repo.value = { owner: 'o', repo: 'r', ref: SHA, sha: SHA, stale: false, warnings: [], manifest: null, files: new Map() };
+        c.candidates.value = [{ path: 'a.scad', title: 'Gadget' }];
+        c.params.value = [{ name: 'n', group: 'G', type: 'number', initial: 1 }];
+        c.values.value = { n: 2 };
+        return c;
+      }
+      const base = () => location.origin + location.pathname;
+
+      it('explains the link and updates it as options change', () => {
+        try { localStorage.removeItem('osc-share-options'); } catch { /* ignore */ }
+        render(<App ctl={shareCtl()} />);
+        fireEvent.click(screen.getByTestId('share-link'));
+        expect(screen.getByRole('dialog', { name: 'Share this model' })).toBeTruthy();
+        expect(screen.getByTestId('share-summary').textContent).toBe('Opens Gadget with your 1 changed setting, always using the latest version.');
+        expect((screen.getByTestId('share-url') as HTMLInputElement).value).toBe(`${base()}#/gh/o/r/a.scad?n=2`);
+        fireEvent.click(screen.getByLabelText(/Pin to this exact version/));
+        expect((screen.getByTestId('share-url') as HTMLInputElement).value).toBe(`${base()}#/gh/o/r@${SHA}/a.scad?n=2`);
+        fireEvent.click(screen.getByLabelText(/Include my settings/));
+        expect(screen.getByTestId('share-summary').textContent).toBe('Opens Gadget with its default settings, pinned to version bbbbbbb.');
+        expect(screen.queryByLabelText(/Open this model directly/)).toBeNull(); // single-model repo
+      });
+
+      it('remembers the chosen options', () => {
+        try { localStorage.setItem('osc-share-options', JSON.stringify({ settings: false, pin: true, model: true })); } catch { /* ignore */ }
+        render(<App ctl={shareCtl()} />);
+        fireEvent.click(screen.getByTestId('share-link'));
+        expect((screen.getByTestId('share-url') as HTMLInputElement).value).toBe(`${base()}#/gh/o/r@${SHA}/a.scad`);
+        try { localStorage.removeItem('osc-share-options'); } catch { /* ignore */ }
+      });
+
+      it('copies the link shown and closes on Escape or an outside click', async () => {
+        try { localStorage.removeItem('osc-share-options'); } catch { /* ignore */ }
+        const writeText = vi.fn(async () => {});
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+        render(<App ctl={shareCtl()} />);
+        fireEvent.click(screen.getByTestId('share-link'));
+        fireEvent.click(screen.getByText('Copy'));
+        await screen.findByText('Copied!');
+        expect(writeText).toHaveBeenCalledWith(`${base()}#/gh/o/r/a.scad?n=2`);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Share this model' })).toBeNull();
+        fireEvent.click(screen.getByTestId('share-link'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByRole('dialog', { name: 'Share this model' })).toBeNull();
+      });
     });
 
     it('jumps again on a repeated click and not when the drawer is reopened', async () => {

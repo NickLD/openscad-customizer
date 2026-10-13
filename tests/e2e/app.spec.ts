@@ -28,7 +28,10 @@ test('customize the gland: form, live preview, export, share link', async ({ pag
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^cable_gland-[0-9a-f]{8}\.stl$/);
 
-  const url = page.url();
+  await page.getByTestId('share-link').click();
+  await expect(page.getByTestId('share-summary')).toHaveText('Opens Cable gland with your 1 changed setting, always using the latest version.');
+  const url = await page.getByTestId('share-url').inputValue();
+  expect(url).toMatch(/#\/gh\/demo\/gland\/cable_gland\.scad\?cable_count=3$/);
   const fresh = await page.context().newPage();
   await fakeGitHub(fresh);
   await fresh.goto(url);

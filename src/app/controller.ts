@@ -6,12 +6,13 @@ import { isEmptyGeometry, type LogLine } from '../engine/log';
 import { parseOff, type Mesh } from '../mesh/off';
 import { meshToStl } from '../mesh/stl';
 import { meshToThreeMF } from '../mesh/threemf';
-import { overrides } from '../paramCodec';
+import { overrides, sameValue } from '../paramCodec';
 import { defaultsOf, toGroups } from '../paramModel';
 import { parsePresets, resolveValues, type PresetFile } from '../presets';
 import { loadFonts, loadLibraries, missingLibraryMessage, planLibraries } from '../repo/libraries';
 import { loadRepo, LoadError, type LoadedRepo, type Net } from '../repo/repoLoader';
 import { parseRoute, serializeRoute } from '../router';
+import type { ShareState } from '../share';
 import type { FileMap, Param, ParamSet, ParamValue } from '../types';
 import { basename, decodeText, encodeText } from '../util';
 
@@ -255,6 +256,26 @@ export class AppController {
       path: this.entry.value ?? undefined, preset: this.preset.value ?? undefined,
       values: overrides(this.values.value, this.defaults.value),
     });
+  }
+
+  /** What a share link could carry right now. Null when no repo is open. */
+  shareState(): ShareState | null {
+    const repo = this.repo.value;
+    if (!repo) return null;
+    const entry = this.entry.value;
+    const preset = this.preset.value;
+    let presetExact = false;
+    if (preset && this.presets.value[preset]) {
+      const expected = { ...this.defaults.value, ...resolveValues(this.params.value, this.presets.value[preset]).values };
+      presetExact = Object.entries(this.values.value).every(([k, v]) => k in expected && sameValue(v, expected[k]));
+    }
+    const candidate = this.candidates.value.find((c) => c.path === entry);
+    return {
+      owner: repo.owner, repo: repo.repo, sha: repo.sha, entry,
+      title: candidate?.title ?? repo.manifest?.title ?? (entry ? basename(entry).replace(/\.scad$/i, '') : `${repo.owner}/${repo.repo}`),
+      multipleModels: this.candidates.value.length > 1,
+      preset, presetExact, changed: overrides(this.values.value, this.defaults.value),
+    };
   }
 
   // --- internals ---
