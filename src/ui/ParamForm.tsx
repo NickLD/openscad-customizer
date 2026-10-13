@@ -53,9 +53,10 @@ function Field({ control, value, modified, onChange, onReset }: { control: Contr
         <div class="vector">
           {arr.map((x, i) => (
             <input key={i} type="number" aria-label={`${p.name}[${i}]`} step={p.step ?? 'any'} value={x}
-              onInput={(e) => {
-                const n = Number(e.currentTarget.value);
-                if (Number.isFinite(n)) onChange(arr.map((y, j) => (j === i ? roundToStep(n, p.step) : y)));
+              onChange={(e) => {
+                const raw = e.currentTarget.value;
+                const n = Number(raw);
+                if (raw.trim() !== '' && Number.isFinite(n)) onChange(arr.map((y, j) => (j === i ? roundToStep(n, p.step) : y)));
               }} />
           ))}
         </div>
@@ -81,7 +82,7 @@ export function ParamForm({ groups, values, defaults, onChange, onReset }: Props
   return (
     <div class="param-form">
       {groups.map((g) => (
-        <details key={g.name} open={open[g.name] ?? false} onToggle={(e) => setOpen({ ...open, [g.name]: (e.currentTarget as HTMLDetailsElement).open })}>
+        <details key={g.name} open={open[g.name] ?? false} onToggle={(e) => setOpen((o) => ({ ...o, [g.name]: (e.currentTarget as HTMLDetailsElement).open }))}>
           <summary>{g.name}</summary>
           {g.controls.map((c) => {
             const v = values[c.param.name] ?? c.param.initial;

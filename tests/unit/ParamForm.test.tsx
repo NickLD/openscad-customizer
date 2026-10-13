@@ -45,8 +45,22 @@ describe('ParamForm', () => {
     expect(onChange).toHaveBeenCalledWith('taper', true);
     fireEvent.input(screen.getByLabelText('label'), { target: { value: 'yo' } });
     expect(onChange).toHaveBeenCalledWith('label', 'yo');
-    fireEvent.input(screen.getByLabelText('offset[1]'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('offset[1]'), { target: { value: '5' } });
     expect(onChange).toHaveBeenCalledWith('offset', [1, 5]);
+  });
+
+  it('rounds the slider companion number box to the step', () => {
+    const { onChange } = setup();
+    fireEvent.change(screen.getByLabelText('clearance value'), { target: { value: '0.30000000000000004' } });
+    expect(onChange).toHaveBeenCalledWith('clearance', 0.3);
+  });
+
+  it('ignores cleared vector boxes and commits typed vector values on change', () => {
+    const { onChange } = setup();
+    fireEvent.change(screen.getByLabelText('offset[0]'), { target: { value: '' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('offset[0]'), { target: { value: '-2.5' } });
+    expect(onChange).toHaveBeenCalledWith('offset', [-2.5, 2]);
   });
 
   it('marks modified values and resets them', () => {
