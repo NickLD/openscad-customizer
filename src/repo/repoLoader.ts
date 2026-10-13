@@ -29,8 +29,14 @@ const listingUrl = (o: string, r: string, ref: string) => `https://data.jsdelivr
 export const cdnUrl = (o: string, r: string, ref: string, path: string) => `https://cdn.jsdelivr.net/gh/${o}/${r}@${encodeURIComponent(ref)}/${encPath(path)}`;
 const rawUrl = (o: string, r: string, ref: string, path: string) => `https://raw.githubusercontent.com/${o}/${r}/${encodeURIComponent(ref)}/${encPath(path)}`;
 const notFound = (o: string, r: string) => new LoadError('not-found', `Couldn't find ${o}/${r}. Private repos aren't supported.`);
+// Refs go into URL path segments. Empty, dot-segment and control-character refs would rewrite the path.
+const isSafeRef = (r: string) => r !== '' && !/[\x00-\x1f\x7f]/.test(r) && !r.split('/').some((s) => s === '.' || s === '..');
+const assertSafeRef = (owner: string, repo: string, ref: string) => {
+  if (!isSafeRef(ref)) throw new LoadError('ref-not-found', `Couldn't find "${ref}" in ${owner}/${repo}.`);
+};
 
 export async function resolveRef(net: Net, owner: string, repo: string, ref?: string): Promise<ResolvedRef> {
+  if (ref !== undefined) assertSafeRef(owner, repo, ref);
   if (ref && /^[0-9a-f]{40}$/i.test(ref)) return { ref, sha: ref, stale: false };
 
   const fallback = async (): Promise<ResolvedRef> => {
@@ -51,13 +57,15 @@ export async function resolveRef(net: Net, owner: string, repo: string, ref?: st
       if (r.status === 404) throw notFound(owner, repo);
       if (r.status !== 200) return await fallback();
       branch = String((r.data as { default_branch?: string })?.default_branch ?? 'main');
+      if (!isSafeRef(branch)) return await fallback();
     }
     const c = await net.getJson(`${API}/${owner}/${repo}/commits/${encodeURIComponent(branch)}`);
     if (c.status === 404 || c.status === 422) {
       throw ref ? new LoadError('ref-not-found', `Couldn't find "${ref}" in ${owner}/${repo}.`) : notFound(owner, repo);
     }
     if (c.status !== 200) return await fallback();
-    const sha = String((c.data as { sha?: string })?.sha);
+    const sha = (c.data as { sha?: unknown })?.sha;
+    if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/i.test(sha)) return await fallback();
     return { ref: sha, sha, stale: false };
   } catch (e) {
     if (e instanceof LoadError) throw e;
@@ -66,6 +74,7 @@ export async function resolveRef(net: Net, owner: string, repo: string, ref?: st
 }
 
 export async function listFiles(net: Net, owner: string, repo: string, ref: string): Promise<ListedFile[]> {
+  assertSafeRef(owner, repo, ref);
   try {
     const j = await net.getJson(listingUrl(owner, repo, ref));
     if (j.status === 200) {
@@ -87,6 +96,7 @@ export async function fetchFiles(
   net: Net, owner: string, repo: string, ref: string, list: ListedFile[], caps: Caps,
   opts: { extensions?: string[]; concurrency?: number } = {},
 ): Promise<{ files: Map<string, Uint8Array>; skipped: string[] }> {
+  assertSafeRef(owner, repo, ref);
   const exts = opts.extensions ?? FETCH_EXTENSIONS;
   const skipped: string[] = [];
   const wanted: ListedFile[] = [];

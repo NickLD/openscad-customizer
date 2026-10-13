@@ -36,6 +36,19 @@ describe('resolveRef', () => {
     expect(await resolveRef(net, 'o', 'r')).toEqual({ ref: SHA, sha: SHA, stale: false });
   });
 
+  it('rejects dot-segment refs before any request', async () => {
+    for (const bad of ['..', '.']) {
+      const net = fakeNet({});
+      await expect(resolveRef(net, 'o', 'r', bad)).rejects.toMatchObject({ code: 'ref-not-found' });
+      expect(net.calls).toEqual([]);
+    }
+  });
+
+  it('falls back to jsDelivr when the commits response has no valid sha', async () => {
+    const net = fakeNet({ [API]: { status: 200, data: { default_branch: 'main' } }, [`${API}/commits/main`]: { status: 200, data: {} }, ...listing('main', []) });
+    expect(await resolveRef(net, 'o', 'r')).toEqual({ ref: 'main', stale: true });
+  });
+
   it('uses a 40-hex ref without any request', async () => {
     const net = fakeNet({});
     expect(await resolveRef(net, 'o', 'r', SHA)).toEqual({ ref: SHA, sha: SHA, stale: false });
@@ -59,6 +72,12 @@ describe('resolveRef', () => {
   it('falls back on network errors for an explicit ref', async () => {
     const net = fakeNet({ [`${API}/commits/dev`]: 'network-error', ...listing('dev', []) });
     expect(await resolveRef(net, 'o', 'r', 'dev')).toEqual({ ref: 'dev', stale: true });
+  });
+});
+
+describe('cdnUrl', () => {
+  it('pins the encoding of ref and path', () => {
+    expect(cdnUrl('o', 'r', 'a/b?c#d%e', 'x y/z.scad')).toBe('https://cdn.jsdelivr.net/gh/o/r@a%2Fb%3Fc%23d%25e/x%20y/z.scad');
   });
 });
 
