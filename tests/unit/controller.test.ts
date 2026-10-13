@@ -338,4 +338,24 @@ describe('AppController', () => {
       expect(ctl.notices.value).toEqual([]);
     });
   });
+
+  it('loads fonts once when a render reports a missing font, and re-renders with them', async () => {
+    const { ctl, fe } = make();
+    const loadFonts = vi.fn(async () => ({ files: new Map([['/fonts/LiberationSans-Regular.ttf', encodeText('ttf')]]), warnings: [] }));
+    (ctl as unknown as { deps: { loadFonts: unknown } }).deps.loadFonts = loadFonts;
+    const noFont = (): JobResult => ({ ...ok(), log: [{ level: 'warning', text: "Can't get font Liberation Sans for text()" }] });
+    await ctl.open('#/gh/o/r/g.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fe.renders()[0].job.files.has('/fonts/LiberationSans-Regular.ttf')).toBe(false);
+    fe.renders()[0].resolve(noFont());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loadFonts).toHaveBeenCalledTimes(1);
+    expect(fe.renders()).toHaveLength(2);
+    expect(fe.renders()[1].job.files.has('/fonts/LiberationSans-Regular.ttf')).toBe(true);
+    fe.renders()[1].resolve(noFont());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(loadFonts).toHaveBeenCalledTimes(1);
+    expect(fe.renders()).toHaveLength(2);
+    expect(ctl.render.value.status).toBe('ready');
+  });
 });

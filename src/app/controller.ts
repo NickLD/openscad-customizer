@@ -9,7 +9,7 @@ import { meshToThreeMF } from '../mesh/threemf';
 import { overrides } from '../paramCodec';
 import { defaultsOf, toGroups } from '../paramModel';
 import { parsePresets, resolveValues, type PresetFile } from '../presets';
-import { loadLibraries, missingLibraryMessage, planLibraries } from '../repo/libraries';
+import { loadFonts, loadLibraries, missingLibraryMessage, planLibraries } from '../repo/libraries';
 import { loadRepo, LoadError, type LoadedRepo, type Net } from '../repo/repoLoader';
 import { parseRoute, serializeRoute } from '../router';
 import type { FileMap, Param, ParamSet, ParamValue } from '../types';
@@ -24,11 +24,13 @@ export type ControllerDeps = {
   debounceMs?: number;
   loadRepo?: typeof loadRepo;
   loadLibraries?: typeof loadLibraries;
+  loadFonts?: typeof loadFonts;
 };
 
 const REPO_ROOT = '/repo/';
 /** Trailing debounce for URL writes from value changes (Safari allows ~100 replaceState calls per 10 s). */
 const HASH_DEBOUNCE_MS = 300;
+const MISSING_FONT = /Can't get font/;
 const EMPTY_MSG = 'Render produced no geometry (check the `part` setting?)';
 
 function fnv1a(s: string): string {
@@ -69,9 +71,11 @@ export class AppController {
   private pinnedRef: string | undefined;
   /** The ref the current repo was requested with (undefined = default branch). */
   private loadedRef: string | undefined;
+  /** Fonts were loaded (or attempted) for the current repo, so a missing-font warning won't load them again. */
+  private fontsTried = false;
 
   constructor(deps: ControllerDeps) {
-    this.deps = { debounceMs: 500, loadRepo, loadLibraries, ...deps };
+    this.deps = { debounceMs: 500, loadRepo, loadLibraries, loadFonts, ...deps };
   }
 
   async open(hash: string): Promise<void> {
@@ -104,6 +108,7 @@ export class AppController {
         const libs = await this.deps.loadLibraries(this.deps.net, plan);
         if (mySeq !== this.openSeq) return;
         this.libFiles = libs.files;
+        this.fontsTried = plan.needsFonts;
         const found = findCandidates(repo.files, repo.manifest);
         this.repo.value = repo;
         this.loadedRef = route.ref;
@@ -245,6 +250,26 @@ export class AppController {
     this.candidates.value = [];
     this.notices.value = [];
     this.libFiles = new Map();
+    this.fontsTried = false;
+  }
+
+  /** text() can be called from inside a library (BOSL2 text3d, path_text): load fonts on first complaint, once per repo. */
+  private async loadMissingFonts(): Promise<void> {
+    this.fontsTried = true;
+    const repo = this.repo.value;
+    let fonts: Awaited<ReturnType<typeof loadFonts>>;
+    try {
+      fonts = await this.deps.loadFonts(this.deps.net);
+    } catch {
+      return;
+    }
+    if (repo !== this.repo.value) return;
+    this.libFiles = new Map([...this.libFiles, ...fonts.files]);
+    if (fonts.warnings.length) this.notices.value = [...this.notices.value, ...fonts.warnings];
+    if (fonts.files.size && this.phase.value === 'model' && this.entry.value) {
+      this.markOutdated();
+      this.scheduleRender(0);
+    }
   }
 
   private files(): FileMap {
@@ -361,6 +386,7 @@ export class AppController {
     if (seq !== this.seq) return;
     this.abort = null;
     this.log.value = [...this.paramLog, ...result.log, { level: 'info', text: `Rendered in ${result.ms} ms` }];
+    if (!this.fontsTried && result.log.some((l) => MISSING_FONT.test(l.text))) void this.loadMissingFonts();
     if (result.exitCode === 0 && result.output) {
       try {
         const mesh = parseOff(decodeText(result.output));
