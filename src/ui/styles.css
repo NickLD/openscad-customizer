@@ -25,6 +25,8 @@ button.primary, .button.primary { background: var(--accent); color: var(--accent
 .app-header .ref { color: var(--muted); font-size: 13px; font-family: ui-monospace, monospace; }
 .app-header .spacer { flex: 1; }
 .share-wrap { position: relative; }
+.share-wrap > button { display: inline-flex; align-items: center; gap: 6px; }
+.share-wrap > button .icon { flex: none; }
 .share-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; width: 400px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px rgb(0 0 0 / 0.18); display: flex; flex-direction: column; gap: 8px; animation: fade-in 120ms ease-out; }
 .share-panel h2 { margin: 0 0 4px; font-size: 15px; }
 .share-panel label { display: flex; align-items: center; gap: 8px; font-size: 14px; }

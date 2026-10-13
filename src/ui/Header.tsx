@@ -48,7 +48,15 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
               onClick={() => {
                 if (!sharing) ctl.flushHash(); // keep the address bar in step with what's being shared
                 setSharing(!sharing);
-              }}>Share a link to this</button>
+              }}>
+              <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+              </svg>
+              Share a link to this
+            </button>
             {sharing && <SharePanel ctl={ctl} />}
           </span>
           <button type="button" data-testid="source-toggle" onClick={onToggleSource}>&lt;/&gt; Src</button>
