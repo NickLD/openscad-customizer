@@ -67,6 +67,8 @@ export class AppController {
   private sourceDirty = false;
   private paramLog: LogLine[] = [];
   private pinnedRef: string | undefined;
+  /** The ref the current repo was requested with (undefined = default branch). */
+  private loadedRef: string | undefined;
 
   constructor(deps: ControllerDeps) {
     this.deps = { debounceMs: 500, loadRepo, loadLibraries, ...deps };
@@ -87,8 +89,16 @@ export class AppController {
     try {
       const current = this.repo.value;
       let repo = current;
-      if (!current || current.owner !== route.owner || current.repo !== route.repo || (route.ref && route.ref !== current.ref && route.ref !== current.sha)) {
-        repo = await this.deps.loadRepo(this.deps.net, route.owner, route.repo, route.ref);
+      const reuse = current && current.owner === route.owner && current.repo === route.repo
+        && (route.ref === this.loadedRef || (route.ref !== undefined && (route.ref === current.ref || route.ref === current.sha)));
+      if (!reuse) {
+        try {
+          repo = await this.deps.loadRepo(this.deps.net, route.owner, route.repo, route.ref);
+        } catch (e) {
+          // Don't leave the previous repo's title, ref and notices around the error.
+          if (mySeq === this.openSeq) this.clearRepo();
+          throw e;
+        }
         if (mySeq !== this.openSeq) return;
         const plan = planLibraries(repo.files, repo.manifest);
         const libs = await this.deps.loadLibraries(this.deps.net, plan);
@@ -96,6 +106,7 @@ export class AppController {
         this.libFiles = libs.files;
         const found = findCandidates(repo.files, repo.manifest);
         this.repo.value = repo;
+        this.loadedRef = route.ref;
         this.candidates.value = found.candidates;
         this.notices.value = [...repo.warnings, ...found.warnings, ...libs.warnings, ...plan.missing.map(missingLibraryMessage)];
       }
@@ -227,6 +238,14 @@ export class AppController {
   }
 
   // --- internals ---
+
+  private clearRepo(): void {
+    this.repo.value = null;
+    this.loadedRef = undefined;
+    this.candidates.value = [];
+    this.notices.value = [];
+    this.libFiles = new Map();
+  }
 
   private files(): FileMap {
     const files: FileMap = new Map(this.libFiles);

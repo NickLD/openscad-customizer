@@ -303,4 +303,39 @@ describe('AppController', () => {
       expect(setHash).not.toHaveBeenCalled();
     });
   });
+
+  describe('repo reuse', () => {
+    const two = { 'a.scad': 'x = 1; // [1:2]', 'b.scad': 'y = 1; // [1:2]' };
+    const loader = (ctl: AppController) => (ctl as unknown as { deps: { loadRepo: ReturnType<typeof vi.fn> } }).deps.loadRepo;
+
+    it('switching models under a pinned tag reuses the loaded repo', async () => {
+      const { ctl } = make(two);
+      await ctl.open('#/gh/o/r@v1.2/a.scad');
+      await ctl.open('#/gh/o/r@v1.2/b.scad');
+      expect(ctl.entry.value).toBe('b.scad');
+      expect(loader(ctl)).toHaveBeenCalledTimes(1);
+      expect(loader(ctl)).toHaveBeenCalledWith(expect.anything(), 'o', 'r', 'v1.2');
+    });
+
+    it('reuses for the resolved sha, reloads for a different ref', async () => {
+      const { ctl } = make(two);
+      await ctl.open('#/gh/o/r/a.scad');
+      await ctl.open(`#/gh/o/r@${'a'.repeat(40)}/b.scad`);
+      expect(loader(ctl)).toHaveBeenCalledTimes(1);
+      await ctl.open('#/gh/o/r@v2/b.scad');
+      expect(loader(ctl)).toHaveBeenCalledTimes(2);
+    });
+
+    it('a failed load of another repo clears the previous repo', async () => {
+      const { ctl } = make(two);
+      await ctl.open('#/gh/o/r');
+      expect(ctl.candidates.value).toHaveLength(2);
+      loader(ctl).mockImplementation(async () => { throw new LoadError('not-found', "Couldn't find o/other."); });
+      await ctl.open('#/gh/o/other');
+      expect(ctl.phase.value).toBe('error');
+      expect(ctl.repo.value).toBeNull();
+      expect(ctl.candidates.value).toEqual([]);
+      expect(ctl.notices.value).toEqual([]);
+    });
+  });
 });
