@@ -1,5 +1,5 @@
 import {
-  AmbientLight, Color, DirectionalLight, GridHelper, Mesh as ThreeMesh, MeshStandardMaterial,
+  AmbientLight, Color, DirectionalLight, GridHelper, Material, Mesh as ThreeMesh, MeshStandardMaterial,
   PerspectiveCamera, Scene, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -17,6 +17,7 @@ export class ThreeViewer {
   private model: ThreeMesh | null = null;
   private observer: ResizeObserver;
   private frame = 0;
+  private disposed = false;
 
   constructor(private container: HTMLElement) {
     this.renderer = new WebGLRenderer({ antialias: true });
@@ -45,26 +46,31 @@ export class ThreeViewer {
   }
 
   setMesh(mesh: Mesh | null, refit: boolean): void {
-    if (this.model) {
-      this.scene.remove(this.model);
-      this.model.geometry.dispose();
-      (this.model.material as MeshStandardMaterial).dispose();
-      this.model = null;
-    }
+    if (this.disposed) return;
+    this.clearModel();
     if (mesh) {
       const geometry = meshToGeometry(mesh);
       const material = new MeshStandardMaterial({ color: mesh.colors ? 0xffffff : MODEL_COLOR, vertexColors: !!mesh.colors, roughness: 0.55, metalness: 0.05 });
       this.model = new ThreeMesh(geometry, material);
       this.scene.add(this.model);
       const box = geometry.boundingBox!;
-      this.grid.position.z = box.min.z;
+      if (Number.isFinite(box.min.z)) this.grid.position.z = box.min.z; // empty mesh has no finite box
       if (refit) this.fit();
     }
     this.requestRender();
   }
 
+  private clearModel(): void {
+    if (!this.model) return;
+    this.scene.remove(this.model);
+    this.model.geometry.dispose();
+    (this.model.material as MeshStandardMaterial).dispose();
+    this.model = null;
+  }
+
   private fit(): void {
     const sphere = this.model!.geometry.boundingSphere!;
+    if (!(sphere.radius > 0)) return; // empty mesh: nothing to frame
     const dist = sphere.radius / Math.sin((this.camera.fov * Math.PI) / 360) * 1.15;
     const dir = new Vector3(0.6, -1, 0.75).normalize();
     this.controls.target.copy(sphere.center);
@@ -85,7 +91,7 @@ export class ThreeViewer {
   }
 
   private requestRender(): void {
-    if (this.frame) return;
+    if (this.disposed || this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       this.renderer.render(this.scene, this.camera);
@@ -93,10 +99,15 @@ export class ThreeViewer {
   }
 
   dispose(): void {
+    this.disposed = true;
     cancelAnimationFrame(this.frame);
+    this.frame = 0;
     this.observer.disconnect();
     this.controls.dispose();
-    this.setMesh(null, false);
+    this.clearModel();
+    this.grid.geometry.dispose();
+    (this.grid.material as Material).dispose();
+    this.renderer.forceContextLoss();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

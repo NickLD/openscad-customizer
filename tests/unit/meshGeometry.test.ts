@@ -13,4 +13,15 @@ describe('meshToGeometry', () => {
     const c = colored.getAttribute('color');
     expect([c.getX(0), c.getY(0), c.getZ(0)]).toEqual([1, 0, 0]);
   });
+
+  it('maps each face colour onto its own three vertices', () => {
+    const two = meshToGeometry(parseOff(
+      'OFF 4 2 0\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n3 0 1 2 255 0 0\n3 1 3 2 0 0 255\n',
+    ));
+    expect(two.getAttribute('position').count).toBe(6);
+    const c = two.getAttribute('color');
+    for (let v = 3; v < 6; v++) {
+      expect([c.getX(v), c.getY(v), c.getZ(v)]).toEqual([0, 0, 1]);
+    }
+  });
 });
