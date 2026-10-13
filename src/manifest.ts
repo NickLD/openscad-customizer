@@ -7,12 +7,13 @@ export type ManifestFile = { path: string; title?: string; description?: string;
 export type Manifest = { title?: string; description?: string; files?: ManifestFile[]; libraries: Record<string, LibraryRef> };
 
 const SEG = /^[A-Za-z0-9_.-]+$/;
+const okSeg = (s: string) => SEG.test(s) && s !== '.' && s !== '..';
 
 export function parseLibraryRef(s: string): LibraryRef | null {
   const m = /^gh:([^/@]+)\/([^/@]+)(?:@([^/]+))?(?:\/(.+))?$/.exec(s);
   if (!m) return null;
   const [, owner, repo, ref, subdir] = m;
-  if (!SEG.test(owner) || !SEG.test(repo)) return null;
+  if (!okSeg(owner) || !okSeg(repo)) return null;
   if (subdir !== undefined && !isSafeRelPath(subdir)) return null;
   const out: LibraryRef = { owner, repo };
   if (ref) out.ref = ref;
@@ -68,7 +69,7 @@ export function parseManifest(text: string): { manifest: Manifest | null; errors
     if (!o.libraries || typeof o.libraries !== 'object' || Array.isArray(o.libraries)) errors.push(`${MANIFEST_NAME}: "libraries" must be an object.`);
     else {
       for (const [name, value] of Object.entries(o.libraries as Record<string, unknown>)) {
-        const ref = typeof value === 'string' && SEG.test(name) ? parseLibraryRef(value) : null;
+        const ref = typeof value === 'string' && okSeg(name) && name !== '__proto__' ? parseLibraryRef(value) : null;
         if (ref) manifest.libraries[name] = ref;
         else errors.push(`${MANIFEST_NAME}: library "${name}" must look like "gh:owner/repo[@ref][/subdir]".`);
       }

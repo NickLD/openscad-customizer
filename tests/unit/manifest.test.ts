@@ -12,6 +12,8 @@ describe('parseLibraryRef', () => {
     expect(parseLibraryRef('npm:x')).toBeNull();
     expect(parseLibraryRef('gh:onlyowner')).toBeNull();
     expect(parseLibraryRef('gh:o/r/../x')).toBeNull();
+    expect(parseLibraryRef('gh:../..')).toBeNull();
+    expect(parseLibraryRef('gh:o/..')).toBeNull();
   });
 });
 
@@ -39,6 +41,13 @@ describe('parseManifest', () => {
     }));
     expect(manifest).toEqual({ files: [{ path: 'ok.scad' }], libraries: { good: { owner: 'a', repo: 'b' } } });
     expect(errors.length).toBe(5);
+  });
+
+  it('rejects dot-segment and __proto__ library names', () => {
+    const { manifest, errors } = parseManifest('{"libraries":{"..":"gh:a/b","__proto__":"gh:a/b","ok":"gh:a/b"}}');
+    expect(manifest!.libraries).toEqual({ ok: { owner: 'a', repo: 'b' } });
+    expect(Object.getPrototypeOf(manifest!.libraries)).toBe(Object.prototype);
+    expect(errors.length).toBe(2);
   });
 
   it('returns null for non-objects and bad JSON', () => {
