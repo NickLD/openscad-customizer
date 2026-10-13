@@ -43,7 +43,7 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
         </a>
       )}
       <span class="spacer" />
-      <span class="header-actions">
+      <span class={`header-actions${phase === 'model' ? ' crowded' : ''}`}>
         {phase === 'model' && (
           <>
             <span class="share-wrap" ref={shareWrap}>

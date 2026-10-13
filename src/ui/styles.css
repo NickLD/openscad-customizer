@@ -36,13 +36,14 @@ a.button:not(.primary) { padding: 6px 12px; border: 1px solid var(--border); bor
 .label-short { display: none; }
 /* Medium widths: app-level links become icon buttons; the title attribute keeps the full label. */
 @media (max-width: 1499px) {
-  .app-link .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .app-link { padding: 6px 9px; }
+  .crowded .app-link .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .crowded .app-link { padding: 6px 9px; }
 }
 /* Phones: short labels so the whole header row fits. */
 @media (max-width: 768px) {
   .label-long { display: none; }
   .label-short { display: inline; }
+  .app-link .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .header-actions { gap: 6px; }
   .header-actions button, .header-actions a.button { padding: 6px 8px; }
 }
