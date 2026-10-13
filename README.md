@@ -47,6 +47,25 @@ Limits: public repos only; 300 files / 25 MB per repo. `.scad` and `.json` files
 
 Exported STL and 3MF meshes come from OpenSCAD's OFF output, which has 6 significant digits: about 0.001 mm of rounding on a 100 mm part.
 
+The in-app guide at [`#/help`](https://NickLD.github.io/openscad-customizer/#/help) generates your link and badge from a repo URL.
+
+## Get your model featured
+
+Featured models on the home page come from [`src/featured.json`](src/featured.json). Add an entry and open a pull request:
+
+```json
+{
+  "owner": "your-github-name",
+  "repo": "your-repo",
+  "path": "your-model.scad",
+  "title": "Your model name",
+  "description": "One sentence about what it is and what can be customized.",
+  "thumbnail": "path/to/picture.png"
+}
+```
+
+`path` and `thumbnail` are relative to your repo root; `thumbnail` is optional. CI checks that every entry is well-formed.
+
 ## Development
 
 Requires Node.js >= 22.4 (the test setup passes `--no-experimental-webstorage`, which needs that version or newer).

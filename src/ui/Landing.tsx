@@ -1,6 +1,7 @@
 import { Fragment } from 'preact';
 import { useState } from 'preact/hooks';
-import { FEATURED } from '../config';
+import { APP_REPO_URL } from '../config';
+import { FEATURED, featuredHash, featuredThumbnail } from '../featured';
 import { FONTS, REGISTRY } from '../repo/libraries';
 import { githubInputToRoute, serializeRoute } from '../router';
 
@@ -13,15 +14,23 @@ const LIBRARIES = [
 export function Landing() {
   const [input, setInput] = useState('');
   const [bad, setBad] = useState(false);
-  const featured = `#/gh/${FEATURED.owner}/${FEATURED.repo}/${FEATURED.path}`;
-  const appUrl = location.origin + location.pathname;
-  const badge = `[![Open in OpenSCAD Customizer](https://img.shields.io/badge/Open%20in-OpenSCAD%20Customizer-f9d72c)](${appUrl}#/gh/OWNER/REPO)`;
   return (
     <main class="landing">
-      <section class="featured">
-        <h2>{FEATURED.title}</h2>
-        <p>{FEATURED.description}</p>
-        <a class="button primary" href={featured}>Customize it</a>
+      <section>
+        <h2>Featured models</h2>
+        <div class="cards">
+          {FEATURED.map((m) => {
+            const thumb = featuredThumbnail(m);
+            return (
+              <div key={`${m.owner}/${m.repo}/${m.path}`} class="card featured-card" data-testid="featured-card">
+                {thumb ? <img src={thumb} alt="" loading="lazy" /> : <div class="placeholder">◧</div>}
+                <h3>{m.title}</h3>
+                <p>{m.description}</p>
+                <a class="button primary" href={featuredHash(m)}>Customize it</a>
+              </div>
+            );
+          })}
+        </div>
       </section>
       <section>
         <h2>Open any OpenSCAD repo</h2>
@@ -37,16 +46,14 @@ export function Landing() {
         {bad && <p class="hint error">That doesn't look like a GitHub repository URL.</p>}
       </section>
       <section>
-        <h2>For authors</h2>
-        <p>Link people straight to your models by adding this badge to your README (replace OWNER/REPO):</p>
-        <pre class="snippet">{badge}</pre>
-        <p>Optionally add <code>openscad-customizer.json</code> to your repo root for titles, thumbnails and extra libraries. Presets saved by OpenSCAD's customizer (<code>model.json</code> next to <code>model.scad</code>) show up automatically.</p>
+        <h2>Made an OpenSCAD model?</h2>
+        <p>Give people a link that opens it here, ready to customize, and get it featured on this page. <a href="#/help">Use this Customizer for your Model →</a></p>
       </section>
       <footer class="about">
         Runs <a href="https://github.com/openscad/openscad" {...ext}>OpenSCAD</a> (GPL-2.0) in your browser.
         {' '}Bundled libraries are loaded from their GitHub repos under their own licenses:{' '}
         {LIBRARIES.map((l, i) => <Fragment key={l.url}>{i > 0 && ', '}<a href={l.url} {...ext}>{l.name}</a></Fragment>)}.
-        {' '}This app is free software under GPL-2.0-or-later: <a href="https://github.com/NickLD/openscad-customizer" {...ext}>source</a>.
+        {' '}This app is free software under GPL-2.0-or-later: <a href={APP_REPO_URL} {...ext}>source</a>.
       </footer>
     </main>
   );

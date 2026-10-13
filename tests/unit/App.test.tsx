@@ -26,6 +26,29 @@ describe('App', () => {
     expect(location.hash).toBe('#/gh/someone/thing@main/a.scad');
   });
 
+  it('shows featured models as cards linking to the customizer', () => {
+    render(<App ctl={ctl()} />);
+    const card = screen.getByTestId('featured-card');
+    expect(card.textContent).toContain('Split Cable Gland');
+    expect(card.querySelector('a.button')!.getAttribute('href')).toBe('#/gh/NickLD/split-cable-gland/cable_gland.scad');
+    expect(card.querySelector('img')!.getAttribute('src')).toBe('https://cdn.jsdelivr.net/gh/NickLD/split-cable-gland/showcase/img/01_hero.png');
+  });
+
+  it('header links to the customizer source and the how-to page on every page', () => {
+    render(<App ctl={ctl()} />);
+    const gh = screen.getByText('View Customizer Source on GitHub').closest('a')!;
+    expect(gh.getAttribute('href')).toBe('https://github.com/NickLD/openscad-customizer');
+    expect(gh.rel).toBe('noopener noreferrer');
+    expect(screen.getByText('Use this Customizer for your Model').closest('a')!.getAttribute('href')).toBe('#/help');
+  });
+
+  it('renders the help page in the help phase', () => {
+    const c = ctl();
+    c.phase.value = 'help';
+    render(<App ctl={c} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Use this Customizer for your Model' })).toBeTruthy();
+  });
+
   it('links the bundled libraries, OpenSCAD and the app source in the footer', () => {
     render(<App ctl={ctl()} />);
     const links = [...document.querySelectorAll('footer.about a')] as HTMLAnchorElement[];
@@ -65,6 +88,13 @@ describe('App', () => {
       c.entry.value = 'a.scad';
       return c;
     }
+
+    it('labels the source button clearly', () => {
+      render(<App ctl={modelCtl()} />);
+      const btn = screen.getByTestId('source-toggle');
+      expect(btn.textContent).toContain('View/edit Model Source');
+      expect(btn.title).toBe("View and edit this model's OpenSCAD code. Edits stay in your browser.");
+    });
 
     it('shows status, size and enabled exports when ready', () => {
       const c = modelCtl();

@@ -38,7 +38,7 @@ export function SourceDrawer({ ctl, jump, onClose }: { ctl: AppController; jump:
   return (
     <div class="source-drawer" role="dialog" aria-label="Source">
       <div class="drawer-head">
-        <strong>{entry}</strong>
+        <strong>Source: {entry}</strong>
         {edited && <span class="edited">Edited locally – not saved to repo</span>}
         <span class="spacer" />
         {edited && <button type="button" onClick={() => downloadBytes(entry!.split('/').pop()!, encodeText(ctl.entrySource()))}>Download .scad</button>}

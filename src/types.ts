@@ -22,6 +22,7 @@ export type FileMap = Map<string, Uint8Array>;
 
 export type Route =
   | { kind: 'landing' }
+  | { kind: 'help' }
   | {
       kind: 'repo';
       owner: string;

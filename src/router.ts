@@ -13,6 +13,7 @@ export function parseRoute(hash: string): Route {
 
 function parseRouteUnsafe(hash: string): Route {
   const h = hash.replace(/^#/, '');
+  if (h === '/help') return { kind: 'help' };
   if (!h.startsWith('/gh/')) return { kind: 'landing' };
   const q = h.indexOf('?');
   const pathPart = q >= 0 ? h.slice(0, q) : h;
@@ -43,6 +44,7 @@ function parseRouteUnsafe(hash: string): Route {
 
 export function serializeRoute(r: Route): string {
   if (r.kind === 'landing') return '';
+  if (r.kind === 'help') return '#/help';
   let s = `#/gh/${r.owner}/${r.repo}`;
   if (r.ref) s += '@' + encodeURIComponent(r.ref);
   if (r.path) s += '/' + r.path.split('/').map(encodeURIComponent).join('/');

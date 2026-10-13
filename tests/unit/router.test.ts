@@ -75,3 +75,10 @@ describe('githubInputToRoute', () => {
     expect(githubInputToRoute('https://example.com/a b/c')).toBeNull();
   });
 });
+
+describe('help route', () => {
+  it('parses and serializes #/help', () => {
+    expect(parseRoute('#/help')).toEqual({ kind: 'help' });
+    expect(serializeRoute({ kind: 'help' })).toBe('#/help');
+  });
+});

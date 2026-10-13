@@ -25,8 +25,27 @@ button.primary, .button.primary { background: var(--accent); color: var(--accent
 .app-header .ref { color: var(--muted); font-size: 13px; font-family: ui-monospace, monospace; }
 .app-header .spacer { flex: 1; }
 .share-wrap { position: relative; }
-.share-wrap > button { display: inline-flex; align-items: center; gap: 6px; }
-.share-wrap > button .icon { flex: none; }
+.share-wrap > button, .with-icon { display: inline-flex; align-items: center; gap: 6px; }
+.share-wrap > button .icon, .with-icon .icon { flex: none; }
+/* Plain links styled as quiet header buttons. */
+a.button:not(.primary) { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); text-decoration: none; }
+.header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.header-actions > *, .header-actions button { white-space: nowrap; }
+.app-link { font-size: 13px; color: var(--muted) !important; }
+.app-link:hover { color: var(--text) !important; }
+.label-short { display: none; }
+/* Medium widths: app-level links become icon buttons; the title attribute keeps the full label. */
+@media (max-width: 1499px) {
+  .app-link .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .app-link { padding: 6px 9px; }
+}
+/* Phones: short labels so the whole header row fits. */
+@media (max-width: 768px) {
+  .label-long { display: none; }
+  .label-short { display: inline; }
+  .header-actions { gap: 6px; }
+  .header-actions button, .header-actions a.button { padding: 6px 8px; }
+}
 .share-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; width: 400px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px rgb(0 0 0 / 0.18); display: flex; flex-direction: column; gap: 8px; animation: fade-in 120ms ease-out; }
 .share-panel h2 { margin: 0 0 4px; font-size: 15px; }
 .share-panel label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
@@ -36,7 +55,16 @@ button.primary, .button.primary { background: var(--accent); color: var(--accent
 .share-copy input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font: 12px ui-monospace, monospace; }
 .notices { margin: 0; padding: 8px 16px 8px 32px; background: color-mix(in srgb, var(--warning) 12%, var(--panel)); font-size: 13px; }
 
-.landing, .picker, .error-page, .loading { max-width: 960px; margin: 0 auto; padding: 24px 16px; width: 100%; overflow: auto; }
+.landing, .picker, .error-page, .loading, .help { max-width: 960px; margin: 0 auto; padding: 24px 16px; width: 100%; overflow: auto; }
+.help h1 { margin: 0 0 8px; font-size: 26px; }
+.help .lead { color: var(--muted); font-size: 16px; }
+.help section { margin: 28px 0; }
+.help h2 { font-size: 19px; }
+.help .field-label { display: block; margin-bottom: 6px; font-weight: 600; }
+.help input.wide { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.help .share-copy { margin-bottom: 8px; }
+.featured-card { display: flex; flex-direction: column; gap: 6px; }
+.featured-card .button { align-self: flex-start; margin-top: auto; }
 .landing section { margin-bottom: 32px; }
 .landing form { display: flex; gap: 8px; }
 .landing input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); min-width: 0; }

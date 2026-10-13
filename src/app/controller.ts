@@ -16,7 +16,7 @@ import type { ShareState } from '../share';
 import type { FileMap, Param, ParamSet, ParamValue } from '../types';
 import { basename, decodeText, encodeText } from '../util';
 
-export type Phase = 'landing' | 'loading' | 'picker' | 'model' | 'error';
+export type Phase = 'landing' | 'help' | 'loading' | 'picker' | 'model' | 'error';
 export type RenderState = {
   status: 'idle' | 'rendering' | 'ready' | 'error';
   mesh: Mesh | null;
@@ -100,8 +100,8 @@ export class AppController {
     const mySeq = ++this.openSeq;
     this.cancelRender();
     this.dropPendingHash(); // the URL already shows the route being opened
-    if (route.kind === 'landing') {
-      this.phase.value = 'landing';
+    if (route.kind === 'landing' || route.kind === 'help') {
+      this.phase.value = route.kind;
       return;
     }
     this.phase.value = 'loading';

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AppController } from '../app/controller';
+import { APP_REPO_URL } from '../config';
+import { CodeIcon, GitHubIcon, PlusIcon, ShareIcon } from './icons';
 import { modelHash } from './links';
 import { SharePanel } from './SharePanel';
 import { isDark, toggleTheme } from './theme';
@@ -41,28 +43,38 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
         </a>
       )}
       <span class="spacer" />
-      {phase === 'model' && (
-        <>
-          <span class="share-wrap" ref={shareWrap}>
-            <button type="button" data-testid="share-link" aria-expanded={sharing} aria-haspopup="dialog"
-              onClick={() => {
-                if (!sharing) ctl.flushHash(); // keep the address bar in step with what's being shared
-                setSharing(!sharing);
-              }}>
-              <svg class="icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
-              </svg>
-              Share a link to this
+      <span class="header-actions">
+        {phase === 'model' && (
+          <>
+            <span class="share-wrap" ref={shareWrap}>
+              <button type="button" data-testid="share-link" aria-expanded={sharing} aria-haspopup="dialog"
+                onClick={() => {
+                  if (!sharing) ctl.flushHash(); // keep the address bar in step with what's being shared
+                  setSharing(!sharing);
+                }}>
+                <ShareIcon />
+                <span class="label-long">Share a link to this</span>
+                <span class="label-short" aria-hidden="true">Share</span>
+              </button>
+              {sharing && <SharePanel ctl={ctl} />}
+            </span>
+            <button type="button" class="with-icon" data-testid="source-toggle" onClick={onToggleSource}
+              title="View and edit this model's OpenSCAD code. Edits stay in your browser.">
+              <CodeIcon />
+              <span class="label-long">View/edit Model Source</span>
+              <span class="label-short" aria-hidden="true">Source</span>
             </button>
-            {sharing && <SharePanel ctl={ctl} />}
-          </span>
-          <button type="button" data-testid="source-toggle" onClick={onToggleSource}>&lt;/&gt; Src</button>
-        </>
-      )}
-      <button type="button" aria-label="Toggle dark mode" onClick={toggleTheme}>{isDark.value ? '☀' : '☾'}</button>
+          </>
+        )}
+        {/* App-level links collapse to icons (with the label as tooltip) where space is tight. */}
+        <a class="button with-icon app-link" href="#/help" title="Use this Customizer for your Model">
+          <PlusIcon /><span class="label">Use this Customizer for your Model</span>
+        </a>
+        <a class="button with-icon app-link" href={APP_REPO_URL} target="_blank" rel="noopener noreferrer" title="View Customizer Source on GitHub">
+          <GitHubIcon /><span class="label">View Customizer Source on GitHub</span>
+        </a>
+        <button type="button" aria-label="Toggle dark mode" onClick={toggleTheme}>{isDark.value ? '☀' : '☾'}</button>
+      </span>
     </header>
   );
 }

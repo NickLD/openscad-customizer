@@ -1,0 +1,10 @@
+[
+  {
+    "owner": "NickLD",
+    "repo": "split-cable-gland",
+    "path": "cable_gland.scad",
+    "title": "Split Cable Gland",
+    "description": "Threaded pass-through you can close around cables that already have connectors. 1–8 cables, any diameters.",
+    "thumbnail": "showcase/img/01_hero.png"
+  }
+]
