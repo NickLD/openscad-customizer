@@ -67,6 +67,18 @@ describe('App', () => {
       expect(screen.getByText('outdated')).toBeTruthy();
     });
 
+    it('Share link flushes the pending URL update before copying it', async () => {
+      const c = modelCtl();
+      const order: string[] = [];
+      vi.spyOn(c, 'flushHash').mockImplementation(() => void order.push('flush'));
+      const writeText = vi.fn(async () => void order.push('copy'));
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      render(<App ctl={c} />);
+      fireEvent.click(screen.getByTestId('share-link'));
+      await screen.findByText('Copied!');
+      expect(order).toEqual(['flush', 'copy']);
+    });
+
     it('cancels a running render', () => {
       const c = modelCtl();
       const spy = vi.spyOn(c, 'cancelRender').mockImplementation(() => {});

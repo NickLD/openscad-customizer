@@ -8,6 +8,7 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
   const [copied, setCopied] = useState(false);
   const title = repo?.manifest?.title ?? (repo ? `${repo.owner}/${repo.repo}` : 'OpenSCAD Customizer');
   const share = async () => {
+    ctl.flushHash(); // value changes update the URL on a debounce
     try {
       await navigator.clipboard.writeText(location.href);
       setCopied(true);

@@ -8,7 +8,13 @@ import './ui/styles.css';
 const ctl = new AppController({
   net: browserNet,
   engine: createBrowserEngine(),
-  setHash: (hash) => history.replaceState(null, '', hash || location.pathname),
+  setHash: (hash) => {
+    try {
+      history.replaceState(null, '', hash || location.pathname);
+    } catch {
+      /* Safari throws SecurityError past ~100 calls per 10 s; a later write catches up */
+    }
+  },
 });
 window.addEventListener('hashchange', () => void ctl.open(location.hash));
 void ctl.open(location.hash);

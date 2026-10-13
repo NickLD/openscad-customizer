@@ -254,4 +254,53 @@ describe('AppController', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(ctl.log.value).toContainEqual({ level: 'info', text: 'Rendered in 5 ms' });
   });
+
+  describe('URL hash writes', () => {
+    it('debounces hash writes from rapid value changes and writes the last value once', async () => {
+      const { ctl, setHash } = make();
+      await ctl.open('#/gh/o/r/g.scad');
+      setHash.mockClear();
+      for (let i = 0; i < 50; i++) ctl.setValue('cable_count', (i % 8) + 1);
+      expect(setHash).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(300);
+      expect(setHash).toHaveBeenCalledTimes(1);
+      expect(setHash).toHaveBeenLastCalledWith('#/gh/o/r/g.scad?cable_count=2');
+    });
+
+    it('a throwing setHash does not stop renders from being scheduled', async () => {
+      const { ctl, fe, setHash } = make();
+      setHash.mockImplementation(() => { throw new DOMException('too many calls', 'SecurityError'); });
+      await ctl.open('#/gh/o/r/g.scad');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fe.renders()).toHaveLength(1);
+      ctl.setValue('cable_count', 5);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(fe.renders()).toHaveLength(2);
+      expect(fe.renders()[1].job).toMatchObject({ values: { cable_count: 5 } });
+    });
+
+    it('flushHash writes a pending hash immediately, once', async () => {
+      const { ctl, setHash } = make();
+      await ctl.open('#/gh/o/r/g.scad');
+      setHash.mockClear();
+      ctl.setValue('cable_count', 7);
+      ctl.flushHash();
+      expect(setHash).toHaveBeenCalledTimes(1);
+      expect(setHash).toHaveBeenLastCalledWith('#/gh/o/r/g.scad?cable_count=7');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(setHash).toHaveBeenCalledTimes(1);
+      ctl.flushHash();
+      expect(setHash).toHaveBeenCalledTimes(1);
+    });
+
+    it('a pending hash write is dropped when another route opens', async () => {
+      const { ctl, setHash } = make();
+      await ctl.open('#/gh/o/r/g.scad');
+      ctl.setValue('cable_count', 7);
+      setHash.mockClear();
+      await ctl.open('#/');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(setHash).not.toHaveBeenCalled();
+    });
+  });
 });

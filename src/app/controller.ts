@@ -27,6 +27,8 @@ export type ControllerDeps = {
 };
 
 const REPO_ROOT = '/repo/';
+/** Trailing debounce for URL writes from value changes (Safari allows ~100 replaceState calls per 10 s). */
+const HASH_DEBOUNCE_MS = 300;
 const EMPTY_MSG = 'Render produced no geometry (check the `part` setting?)';
 
 function fnv1a(s: string): string {
@@ -57,6 +59,7 @@ export class AppController {
   private deps: Required<ControllerDeps>;
   private libFiles: FileMap = new Map();
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private hashTimer: ReturnType<typeof setTimeout> | null = null;
   private abort: AbortController | null = null;
   private seq = 0;
   private openSeq = 0;
@@ -74,6 +77,7 @@ export class AppController {
     this.pinnedRef = route.kind === 'repo' ? route.ref : undefined;
     const mySeq = ++this.openSeq;
     this.cancelRender();
+    this.dropPendingHash(); // the URL already shows the route being opened
     if (route.kind === 'landing') {
       this.phase.value = 'landing';
       return;
@@ -143,8 +147,8 @@ export class AppController {
     if (!extracted) this.paramLog = [...this.paramLog, { level: 'error', text: "Couldn't read parameters. See the messages above." }];
     this.log.value = this.paramLog;
     this.phase.value = 'model';
-    this.syncHash();
     this.scheduleRender(0);
+    this.syncHash();
   }
 
   setValue(name: string, v: ParamValue): void {
@@ -203,6 +207,12 @@ export class AppController {
     if (this.editedSource.value !== null) return this.editedSource.value;
     const data = entry ? this.repo.value?.files.get(entry) : undefined;
     return data ? decodeText(data) : '';
+  }
+
+  /** Writes a debounced URL update now (e.g. before the URL is shared). */
+  flushHash(): void {
+    if (!this.hashTimer) return;
+    this.syncHash();
   }
 
   hash(): string {
@@ -276,16 +286,28 @@ export class AppController {
 
   private changed(): void {
     this.markOutdated();
-    this.syncHash();
     this.scheduleRender(this.deps.debounceMs);
+    this.dropPendingHash();
+    this.hashTimer = setTimeout(() => this.syncHash(), HASH_DEBOUNCE_MS);
   }
 
   private markOutdated(): void {
     if (this.render.value.mesh) this.render.value = { ...this.render.value, outdated: true };
   }
 
+  /** Writes the URL now, replacing any pending debounced write. Never throws. */
   private syncHash(): void {
-    this.deps.setHash(this.hash());
+    this.dropPendingHash();
+    try {
+      this.deps.setHash(this.hash());
+    } catch {
+      /* e.g. Safari's replaceState rate limit: the next write catches up */
+    }
+  }
+
+  private dropPendingHash(): void {
+    if (this.hashTimer) clearTimeout(this.hashTimer);
+    this.hashTimer = null;
   }
 
   private clearTimer(): void {
