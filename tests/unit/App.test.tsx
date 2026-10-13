@@ -68,21 +68,32 @@ describe('App', () => {
 
     it('shows status, size and enabled exports when ready', () => {
       const c = modelCtl();
-      c.render.value = { status: 'ready', mesh, outdated: false };
+      c.render.value = { status: 'ready', mesh, outdated: false, seconds: 5.3 };
       render(<App ctl={c} />);
-      expect(screen.getByTestId('render-status').textContent).toBe('Ready');
+      expect(screen.getByTestId('render-status').textContent).toBe('Ready · 5.3 s');
       expect(screen.getByTestId('model-size').textContent).toBe('10.0 × 20.0 × 5.0 mm');
+      expect(screen.getByTestId('export-stl').textContent).toContain('Download STL');
       expect((screen.getByTestId('export-stl') as HTMLButtonElement).disabled).toBe(false);
       expect((screen.getByTestId('export-3mf') as HTMLButtonElement).disabled).toBe(false);
+      expect(document.querySelector('.viewer')!.classList.contains('stale')).toBe(false);
     });
 
-    it('disables export and shows the outdated badge when outdated', () => {
+    it('blurs the stale model and disables export while a change is pending', () => {
       const c = modelCtl();
       c.render.value = { status: 'ready', mesh, outdated: true };
       render(<App ctl={c} />);
       expect((screen.getByTestId('export-stl') as HTMLButtonElement).disabled).toBe(true);
       expect((screen.getByTestId('export-3mf') as HTMLButtonElement).disabled).toBe(true);
-      expect(screen.getByText('outdated')).toBeTruthy();
+      expect(screen.getByTestId('export-stl').title).toBe('Waiting for render…');
+      expect(document.querySelector('.viewer')!.classList.contains('stale')).toBe(true);
+    });
+
+    it('does not show the previous repo in the header while another one loads', () => {
+      const c = ctl();
+      c.repo.value = { owner: 'old', repo: 'thing', ref: 'main', stale: false, warnings: [], manifest: null, files: new Map() };
+      c.phase.value = 'loading';
+      render(<App ctl={c} />);
+      expect(document.querySelector('.app-header')!.textContent).not.toContain('old/thing');
     });
 
     it('Share link flushes the pending URL update before copying it', async () => {
@@ -117,12 +128,12 @@ describe('App', () => {
       focus.mockRestore();
     });
 
-    it('cancels a running render', () => {
+    it('cancels a slow render from the render card', async () => {
       const c = modelCtl();
       const spy = vi.spyOn(c, 'cancelRender').mockImplementation(() => {});
-      c.render.value = { status: 'rendering', mesh: null, outdated: false };
+      c.render.value = { status: 'rendering', mesh: null, outdated: false, startedAt: performance.now() };
       render(<App ctl={c} />);
-      fireEvent.click(screen.getByText('Cancel'));
+      fireEvent.click(await screen.findByText('Cancel'));
       expect(spy).toHaveBeenCalled();
     });
 

@@ -40,13 +40,14 @@ function fakeEngine() {
 }
 const ok = (): JobResult => ({ exitCode: 0, output: encodeText(OFF), log: [{ level: 'echo', text: 'hi' }], ms: 5 });
 
-function make(files: Record<string, string> = { 'g.scad': '/* [Cables] */\ncable_count = 1; // [1:8]', 'g.json': JSON.stringify({ parameterSets: { Three: { cable_count: '3' } } }) }) {
+function make(files: Record<string, string> = { 'g.scad': '/* [Cables] */\ncable_count = 1; // [1:8]', 'g.json': JSON.stringify({ parameterSets: { Three: { cable_count: '3' } } }) }, extra: { now?: () => number } = {}) {
   const fe = fakeEngine();
   const setHash = vi.fn();
   const ctl = new AppController({
     net: { getJson: vi.fn(), getBytes: vi.fn() }, engine: fe.engine, setHash, debounceMs: 500,
     loadRepo: vi.fn(async () => repo(files)),
     loadLibraries: vi.fn(async () => ({ files: new Map(), warnings: [] })),
+    ...extra,
   });
   return { ctl, fe, setHash };
 }
@@ -55,6 +56,20 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('AppController', () => {
+  it('reports wall-clock render seconds and when the engine is warm', async () => {
+    let t = 1000;
+    const { ctl, fe } = make(undefined, { now: () => t });
+    expect(ctl.engineReady.value).toBe(false);
+    await ctl.open('#/gh/o/r/g.scad');
+    expect(ctl.engineReady.value).toBe(true); // the params job came back
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctl.render.value).toMatchObject({ status: 'rendering', startedAt: 1000 });
+    t = 6300;
+    fe.renders()[0].resolve(ok());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctl.render.value).toMatchObject({ status: 'ready', seconds: 5.3 });
+  });
+
   it('opens a file route, applies URL values, renders and keeps the URL in sync', async () => {
     const { ctl, fe, setHash } = make();
     await ctl.open('#/gh/o/r/g.scad?cable_count=4&bogus=1');

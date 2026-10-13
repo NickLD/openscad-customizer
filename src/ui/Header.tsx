@@ -4,7 +4,9 @@ import { modelHash } from './links';
 import { isDark, toggleTheme } from './theme';
 
 export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSource(): void }) {
-  const repo = ctl.repo.value;
+  // While another repo loads (or after a failure), don't show the previous repo's name.
+  const phase = ctl.phase.value;
+  const repo = phase === 'model' || phase === 'picker' ? ctl.repo.value : null;
   const [copied, setCopied] = useState(false);
   const title = repo?.manifest?.title ?? (repo ? `${repo.owner}/${repo.repo}` : 'OpenSCAD Customizer');
   const share = async () => {

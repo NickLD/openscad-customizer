@@ -1,17 +1,27 @@
 import type { ComponentChildren } from 'preact';
-import type { AppController } from '../app/controller';
-import { meshBounds } from '../mesh/bounds';
+import type { AppController, RenderState } from '../app/controller';
 import { ConsolePanel } from './ConsolePanel';
 import { ExportBar } from './ExportBar';
 import { ParamForm } from './ParamForm';
+import { formatSeconds, RenderOverlay } from './RenderOverlay';
 import { isDark } from './theme';
 import { Viewer } from './viewer/Viewer';
+
+function statusText(r: RenderState): string {
+  if (r.status === 'rendering') return 'Rendering…';
+  if (r.status === 'error') return 'Error';
+  if (r.status === 'ready') {
+    if (r.outdated) return 'Outdated';
+    return r.seconds === undefined ? 'Ready' : `Ready · ${formatSeconds(r.seconds)}`;
+  }
+  return 'Waiting';
+}
 
 export function ModelView({ ctl, drawer, onJumpToLine }: { ctl: AppController; drawer: ComponentChildren; onJumpToLine(line: number): void }) {
   const r = ctl.render.value;
   const presets = Object.keys(ctl.presets.value);
-  const size = r.mesh ? meshBounds(r.mesh).size.map((s) => s.toFixed(1)).join(' × ') + ' mm' : null;
-  const status = r.status === 'rendering' ? 'Rendering…' : r.status === 'error' ? r.message ?? 'Error' : r.status === 'ready' ? (r.outdated ? 'Outdated' : 'Ready') : 'Waiting';
+  // Blur the shown model whenever it no longer matches the current values.
+  const stale = r.mesh !== null && (r.outdated || r.status === 'rendering');
   return (
     <main class="model-view">
       <aside class="params">
@@ -28,16 +38,12 @@ export function ModelView({ ctl, drawer, onJumpToLine }: { ctl: AppController; d
           onChange={(n, v) => ctl.setValue(n, v)} onReset={(n) => ctl.resetValue(n)} />
         <button type="button" class="reset-all" onClick={() => ctl.resetAll()}>Reset to defaults</button>
       </aside>
-      <section class="viewer">
+      <section class={`viewer${stale ? ' stale' : ''}`}>
         <Viewer mesh={r.mesh} fitKey={ctl.meshVersion.value} dark={isDark.value} />
-        {r.outdated && r.mesh && <span class="badge outdated">outdated</span>}
-        {size && <span class="size" data-testid="model-size">{size}</span>}
-        <span class={`status ${r.status}`} data-testid="render-status">
-          {status}
-          {r.status === 'rendering' && <button type="button" onClick={() => ctl.cancelRender()}>Cancel</button>}
-        </span>
-        {drawer}
+        <RenderOverlay render={r} engineReady={ctl.engineReady.value} onCancel={() => ctl.cancelRender()} />
         <ExportBar ctl={ctl} />
+        <span class={`status ${r.status}`} data-testid="render-status">{statusText(r)}</span>
+        {drawer}
       </section>
       <ConsolePanel ctl={ctl} onJumpToLine={onJumpToLine} />
     </main>

@@ -16,12 +16,25 @@ import type { FileMap, Param, ParamSet, ParamValue } from '../types';
 import { basename, decodeText, encodeText } from '../util';
 
 export type Phase = 'landing' | 'loading' | 'picker' | 'model' | 'error';
-export type RenderState = { status: 'idle' | 'rendering' | 'ready' | 'error'; mesh: Mesh | null; outdated: boolean; ms?: number; message?: string };
+export type RenderState = {
+  status: 'idle' | 'rendering' | 'ready' | 'error';
+  mesh: Mesh | null;
+  outdated: boolean;
+  /** OpenSCAD's own run time, as reported by the engine. */
+  ms?: number;
+  /** When the current render started, on the `now()` clock. */
+  startedAt?: number;
+  /** Wall-clock seconds from render start until the model was ready (includes engine startup). */
+  seconds?: number;
+  message?: string;
+};
 export type ControllerDeps = {
   net: Net;
   engine: Engine;
   setHash(hash: string): void;
   debounceMs?: number;
+  /** Clock in milliseconds; injectable for tests. */
+  now?: () => number;
   loadRepo?: typeof loadRepo;
   loadLibraries?: typeof loadLibraries;
   loadFonts?: typeof loadFonts;
@@ -57,6 +70,8 @@ export class AppController {
   log = signal<LogLine[]>([]);
   notices = signal<string[]>([]);
   editedSource = signal<string | null>(null);
+  /** True once the engine has answered a job, i.e. OpenSCAD is downloaded and compiled. */
+  engineReady = signal(false);
 
   private deps: Required<ControllerDeps>;
   private libFiles: FileMap = new Map();
@@ -75,7 +90,7 @@ export class AppController {
   private fontsTried = false;
 
   constructor(deps: ControllerDeps) {
-    this.deps = { debounceMs: 500, loadRepo, loadLibraries, loadFonts, ...deps };
+    this.deps = { debounceMs: 500, now: () => performance.now(), loadRepo, loadLibraries, loadFonts, ...deps };
   }
 
   async open(hash: string): Promise<void> {
@@ -287,6 +302,7 @@ export class AppController {
     let result: JobResult;
     try {
       result = await this.deps.engine.run(job);
+      this.engineReady.value = true;
     } catch (e) {
       this.paramLog = [{ level: 'error', text: `Couldn't read parameters: ${e instanceof Error ? e.message : String(e)}` }];
       if (!keepOnFail) this.params.value = [];
@@ -374,10 +390,12 @@ export class AppController {
     const seq = ++this.seq;
     const abort = new AbortController();
     this.abort = abort;
-    this.render.value = { ...this.render.value, status: 'rendering' };
+    const startedAt = this.deps.now();
+    this.render.value = { ...this.render.value, status: 'rendering', startedAt };
     let result: JobResult;
     try {
       result = await this.deps.engine.run({ kind: 'render', files: this.files(), entry: REPO_ROOT + entry, values: this.values.value }, abort.signal);
+      this.engineReady.value = true;
     } catch (e) {
       if (e instanceof AbortedError || seq !== this.seq) return;
       this.render.value = { ...this.render.value, status: 'error', outdated: true, message: e instanceof Error ? e.message : String(e) };
@@ -390,7 +408,8 @@ export class AppController {
     if (result.exitCode === 0 && result.output) {
       try {
         const mesh = parseOff(decodeText(result.output));
-        this.render.value = { status: 'ready', mesh, outdated: false, ms: result.ms };
+        const seconds = Math.round((this.deps.now() - startedAt) / 100) / 10;
+        this.render.value = { status: 'ready', mesh, outdated: false, ms: result.ms, seconds };
         return;
       } catch (e) {
         this.render.value = { ...this.render.value, status: 'error', outdated: true, message: `Couldn't read the rendered model: ${String(e)}` };
