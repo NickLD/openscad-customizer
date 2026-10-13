@@ -6,6 +6,9 @@
   "license": "GPL-2.0-or-later",
   "scripts": {
     "fetch-wasm": "node scripts/fetch-wasm.mjs",
+    "pretest": "node scripts/fetch-wasm.mjs",
+    "predev": "node scripts/fetch-wasm.mjs",
+    "prebuild": "node scripts/fetch-wasm.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
