@@ -258,6 +258,13 @@ describe('folder-scoped loading', () => {
     });
   });
 
+  it('skips folder levels that hold only one subfolder', async () => {
+    const net = fakeNet({ ...PINNED, ...listing('main', [['tests/data/scad/1.scad', 1], ['tests/data/scad/2.scad', 1], ['tests/data/manual/3.scad', 1]]) });
+    await expect(loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 2 }, { dir: 'tests' })).rejects.toMatchObject({
+      code: 'too-many-files', folders: [{ path: 'tests/data/manual', models: 1 }, { path: 'tests/data/scad', models: 2 }],
+    });
+  });
+
   it('loads up to the cap, as before, when the files cannot be split into folders', async () => {
     const net = fakeNet({ ...PINNED, ...listing('main', [['a.scad', 1], ['b.scad', 1], ['c.scad', 1]]), ...src('a.scad', 'x'), ...src('b.scad', 'x') });
     const repo = await loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 2 });

@@ -224,7 +224,9 @@ export async function loadRepo(
     throw new LoadError('not-found', `There are no .scad files in ${opts.dir}/ of ${owner}/${repo}.`);
   }
   if (scope.length > caps.maxFiles) {
-    const folders = folderChoices(list, opts.dir);
+    let folders = folderChoices(list, opts.dir);
+    // A level holding a single subfolder (tests/ → tests/data/) offers nothing to choose: look one level deeper.
+    while (folders.length === 1) folders = folderChoices(list, folders[0].path);
     const where = opts.dir ? `${opts.dir} in ${owner}/${repo}` : `${owner}/${repo}`;
     if (folders.length >= 2) {
       throw new LoadError('too-many-files', `${where} has ${scope.length} .scad and .json files, more than the ${caps.maxFiles} this app loads at once.`, folders);
