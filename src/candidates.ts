@@ -1,11 +1,10 @@
 import type { Manifest } from './manifest';
 import { MANIFEST_NAME } from './manifest';
-import { basename, decodeText, dirname, joinPath } from './util';
+import { basename, decodeText, includedPaths } from './util';
 
 export type Candidate = { path: string; title: string; description?: string; thumbnail?: string };
 
 const ANNOTATION = /\/\*\s*\[[^\]]*\]\s*\*\/|^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*=[^;\n]*;[ \t]*\/\/[ \t]*\[/m;
-const INCLUDE = /^\s*(?:include|use)\s*<([^>]+)>/gm;
 
 const titleOf = (path: string) => basename(path).replace(/\.scad$/i, '');
 
@@ -31,7 +30,7 @@ export function findCandidates(files: Map<string, Uint8Array>, manifest: Manifes
   if (chosen.length === 0) {
     const included = new Set<string>();
     for (const p of scad) {
-      for (const m of decodeText(files.get(p)!).matchAll(INCLUDE)) included.add(joinPath(dirname(p), m[1]));
+      for (const inc of includedPaths(p, decodeText(files.get(p)!))) included.add(inc);
     }
     chosen = scad.filter((p) => !included.has(p));
   }

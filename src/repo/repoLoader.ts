@@ -1,5 +1,5 @@
 import { MANIFEST_NAME, parseManifest, type Manifest } from '../manifest';
-import { basename, decodeText } from '../util';
+import { basename, decodeText, includedPaths } from '../util';
 import type { Net } from './net';
 
 export type { Net } from './net';
@@ -158,6 +158,23 @@ export async function fetchFiles(
 /** Script and data files: fetched first, so assets can never crowd them out of the caps. */
 const PRIMARY_EXTENSIONS = ['.scad', '.json'];
 const isPrimary = (p: string) => PRIMARY_EXTENSIONS.some((e) => p.toLowerCase().endsWith(e));
+const isScad = (p: string) => p.toLowerCase().endsWith('.scad');
+const inDir = (p: string, dir?: string) => !dir || p.startsWith(dir + '/');
+
+/** Direct subfolders of `dir` (or of the repo root) holding .scad files, with how many each holds at any depth. */
+export function folderChoices(list: ListedFile[], dir?: string): FolderChoice[] {
+  const prefix = dir ? dir + '/' : '';
+  const counts = new Map<string, number>();
+  for (const f of list) {
+    if (!isScad(f.path) || !f.path.startsWith(prefix)) continue;
+    const rest = f.path.slice(prefix.length);
+    const slash = rest.indexOf('/');
+    if (slash < 0) continue;
+    const sub = prefix + rest.slice(0, slash);
+    counts.set(sub, (counts.get(sub) ?? 0) + 1);
+  }
+  return [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([path, models]) => ({ path, models }));
+}
 
 export async function loadRepo(
   net: Net, owner: string, repo: string, ref?: string, caps: Caps = REPO_CAPS, opts: LoadOptions = {},
@@ -185,8 +202,20 @@ export async function loadRepo(
   report({ step: 'listing' });
   const list = await listFiles(net, owner, repo, resolved.ref);
   check();
-  // Phase 1: .scad and .json files.
-  const primary = await fetchFiles(net, owner, repo, resolved.ref, list.filter((f) => isPrimary(f.path)), caps, { extensions: PRIMARY_EXTENSIONS, ...fetchOpts });
+  // Phase 1: .scad and .json files in scope (the folder, or the whole repo).
+  const scope = list.filter((f) => isPrimary(f.path) && inDir(f.path, opts.dir));
+  if (opts.dir && !scope.some((f) => isScad(f.path))) {
+    throw new LoadError('not-found', `There are no .scad files in ${opts.dir}/ of ${owner}/${repo}.`);
+  }
+  if (scope.length > caps.maxFiles) {
+    const folders = folderChoices(list, opts.dir);
+    const where = opts.dir ? `${opts.dir} in ${owner}/${repo}` : `${owner}/${repo}`;
+    if (folders.length >= 2) {
+      throw new LoadError('too-many-files', `${where} has ${scope.length} .scad and .json files, more than the ${caps.maxFiles} this app loads at once.`, folders);
+    }
+  }
+  const manifestFile = opts.dir ? list.filter((f) => f.path === MANIFEST_NAME) : [];
+  const primary = await fetchFiles(net, owner, repo, resolved.ref, [...scope, ...manifestFile], caps, { extensions: PRIMARY_EXTENSIONS, ...fetchOpts });
   check();
   nextPhase();
   const files = primary.files;
@@ -196,6 +225,25 @@ export async function loadRepo(
     const used = list.reduce((n, f) => n + (files.has(f.path) ? f.size : 0), 0);
     return { ...caps, maxFiles: Math.max(0, caps.maxFiles - files.size), maxBytes: Math.max(0, caps.maxBytes - used) };
   };
+  // Phase 1b (folder loads): scripts outside the folder that loaded scripts include or use, followed transitively.
+  if (opts.dir) {
+    const byPath = new Map(list.map((f) => [f.path, f]));
+    const tried = new Set<string>();
+    for (;;) {
+      const missing = new Set<string>();
+      for (const [p, d] of files) {
+        if (!isScad(p)) continue;
+        for (const inc of includedPaths(p, decodeText(d))) if (!files.has(inc) && !tried.has(inc) && byPath.has(inc)) missing.add(inc);
+      }
+      if (!missing.size) break;
+      for (const p of missing) tried.add(p);
+      const more = await fetchFiles(net, owner, repo, resolved.ref, [...missing].map((p) => byPath.get(p)!), remaining(), { extensions: ['.scad'], ...fetchOpts });
+      check();
+      nextPhase();
+      for (const [p, d] of more.files) files.set(p, d);
+      skipped.push(...more.skipped);
+    }
+  }
   // Phase 2: other assets (STL, PNG, …), only when some script mentions them, within what is left of the caps.
   const texts = [...files].filter(([p]) => p.toLowerCase().endsWith('.scad')).map(([, d]) => decodeText(d));
   const referenced = list.filter((f) => !isPrimary(f.path) && texts.some((t) => t.includes(basename(f.path))));

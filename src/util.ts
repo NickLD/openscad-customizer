@@ -33,3 +33,10 @@ export function joinPath(a: string, b: string): string {
 export function isSafeRelPath(p: string): boolean {
   return p.length > 0 && !p.startsWith('/') && !p.includes('\\') && !p.split('/').includes('..') && !/^[a-z]+:/i.test(p);
 }
+
+const INCLUDE = /^\s*(?:include|use)\s*<([^>]+)>/gm;
+
+/** Repo paths that the `include <…>` / `use <…>` lines of the file at `path` point at, resolved relative to that file. */
+export function includedPaths(path: string, text: string): string[] {
+  return [...text.matchAll(INCLUDE)].map((m) => joinPath(dirname(path), m[1]));
+}

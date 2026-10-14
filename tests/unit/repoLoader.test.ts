@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cdnUrl, fetchFiles, LoadError, loadRepo, REPO_CAPS, resolveRef, type LoadProgress, type Net } from '../../src/repo/repoLoader';
+import { cdnUrl, fetchFiles, folderChoices, LoadError, loadRepo, REPO_CAPS, resolveRef, type LoadProgress, type Net } from '../../src/repo/repoLoader';
 import { decodeText, encodeText } from '../../src/util';
 
 const SHA = 'a'.repeat(40);
@@ -197,5 +197,67 @@ describe('loadRepo progress and cancelling', () => {
     await expect(loadRepo(net, 'o', 'r', undefined, REPO_CAPS, { signal: ctrl.signal })).rejects.toMatchObject({ code: 'cancelled' });
     // Only the first batch (one per worker, 8 workers) was requested.
     expect(base.calls.filter((u) => u.endsWith('.scad')).length).toBeLessThanOrEqual(8);
+  });
+});
+
+describe('folder-scoped loading', () => {
+  const PINNED = { [API]: { status: 403 } };
+  const CAPS = { maxFiles: 100, maxBytes: 1e9, maxFileBytes: 1e9 };
+  const src = (p: string, text: string) => ({ [cdnUrl('o', 'r', 'main', p)]: encodeText(text) });
+
+  it('loads the folder, the root manifest and scripts it includes from outside, nothing else', async () => {
+    const net = fakeNet({
+      ...PINNED,
+      ...listing('main', [['openscad-customizer.json', 2], ['lib/common.scad', 1], ['lib/deep.scad', 1], ['lib/unused.scad', 1],
+        ['examples/a.scad', 1], ['examples/a.json', 1], ['tests/t.scad', 1]]),
+      ...src('openscad-customizer.json', '{}'),
+      ...src('examples/a.scad', 'use <../lib/common.scad>\nx = 1;'),
+      ...src('examples/a.json', '{}'),
+      ...src('lib/common.scad', 'include <deep.scad>'),
+      ...src('lib/deep.scad', 'y = 2;'),
+    });
+    const repo = await loadRepo(net, 'o', 'r', undefined, CAPS, { dir: 'examples' });
+    expect([...repo.files.keys()].sort()).toEqual(['examples/a.json', 'examples/a.scad', 'lib/common.scad', 'lib/deep.scad', 'openscad-customizer.json']);
+    expect(net.calls.some((u) => u.includes('tests/') || u.includes('unused'))).toBe(false);
+    expect(repo.warnings).toEqual([expect.stringMatching(/hours/)]);
+  });
+
+  it('offers subfolders instead of downloading when the repo is over the file cap', async () => {
+    const net = fakeNet({
+      ...PINNED,
+      ...listing('main', [['root.scad', 1], ['examples/a.scad', 1], ['examples/b.scad', 1], ['tests/x/1.scad', 1], ['tests/2.scad', 1]]),
+    });
+    const err = await loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 3 }).catch((e) => e);
+    expect(err).toMatchObject({ code: 'too-many-files', folders: [{ path: 'examples', models: 2 }, { path: 'tests', models: 2 }] });
+    expect(err.message).toBe('o/r has 5 .scad and .json files, more than the 3 this app loads at once.');
+    expect(net.calls.some((u) => u.startsWith('https://cdn.jsdelivr.net/'))).toBe(false);
+  });
+
+  it('offers the subfolders of a folder that is itself over the cap', async () => {
+    const net = fakeNet({ ...PINNED, ...listing('main', [['tests/x/1.scad', 1], ['tests/y/2.scad', 1], ['tests/y/3.scad', 1]]) });
+    await expect(loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 1 }, { dir: 'tests' })).rejects.toMatchObject({
+      code: 'too-many-files', message: 'tests in o/r has 3 .scad and .json files, more than the 1 this app loads at once.',
+      folders: [{ path: 'tests/x', models: 1 }, { path: 'tests/y', models: 2 }],
+    });
+  });
+
+  it('loads up to the cap, as before, when the files cannot be split into folders', async () => {
+    const net = fakeNet({ ...PINNED, ...listing('main', [['a.scad', 1], ['b.scad', 1], ['c.scad', 1]]), ...src('a.scad', 'x'), ...src('b.scad', 'x') });
+    const repo = await loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 2 });
+    expect([...repo.files.keys()]).toEqual(['a.scad', 'b.scad']);
+    expect(repo.warnings.some((w) => w.includes('c.scad (repo file limit reached)'))).toBe(true);
+  });
+
+  it('reports a folder without models', async () => {
+    const net = fakeNet({ ...PINNED, ...listing('main', [['a.scad', 1]]) });
+    await expect(loadRepo(net, 'o', 'r', undefined, CAPS, { dir: 'nope' })).rejects.toMatchObject({ code: 'not-found', message: 'There are no .scad files in nope/ of o/r.' });
+  });
+});
+
+describe('folderChoices', () => {
+  it('counts .scad files per direct subfolder, at any depth, sorted', () => {
+    const list = ['z/a.scad', 'a/b/c.scad', 'a/d.scad', 'a/e.json', 'top.scad', 'm/readme.md'].map((path) => ({ path, size: 1 }));
+    expect(folderChoices(list)).toEqual([{ path: 'a', models: 2 }, { path: 'z', models: 1 }]);
+    expect(folderChoices(list, 'a')).toEqual([{ path: 'a/b', models: 1 }]);
   });
 });
