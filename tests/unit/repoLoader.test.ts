@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cdnUrl, fetchFiles, LoadError, loadRepo, REPO_CAPS, resolveRef, type Net } from '../../src/repo/repoLoader';
+import { cdnUrl, fetchFiles, LoadError, loadRepo, REPO_CAPS, resolveRef, type LoadProgress, type Net } from '../../src/repo/repoLoader';
 import { decodeText, encodeText } from '../../src/util';
 
 const SHA = 'a'.repeat(40);
@@ -164,5 +164,38 @@ describe('loadRepo two-phase fetching', () => {
     expect(net.calls.some((u) => u.includes('other.stl'))).toBe(false);
     const skipped = repo.warnings.find((w) => w.startsWith('Skipped'));
     expect(skipped).toBe('Skipped 1 file(s): big.png (repo size limit reached)');
+  });
+});
+
+describe('loadRepo progress and cancelling', () => {
+  const PINNED = { [API]: { status: 403 } };
+
+  it('reports each step and every downloaded file', async () => {
+    const net = fakeNet({
+      ...PINNED,
+      ...listing('main', [['a.scad', 1], ['b.scad', 1], ['p.stl', 1]]),
+      [cdnUrl('o', 'r', 'main', 'a.scad')]: encodeText('import("p.stl");'),
+      [cdnUrl('o', 'r', 'main', 'b.scad')]: encodeText('x=1;'),
+      [cdnUrl('o', 'r', 'main', 'p.stl')]: encodeText('solid'),
+    });
+    const steps: LoadProgress[] = [];
+    await loadRepo(net, 'o', 'r', undefined, REPO_CAPS, { onProgress: (p) => steps.push(p) });
+    expect(steps.slice(0, 2)).toEqual([{ step: 'resolving' }, { step: 'listing' }]);
+    expect(steps.slice(2).map((s) => (s.step === 'downloading' ? [s.done, s.total] : s.step))).toEqual([[1, 2], [2, 2], [3, 3]]);
+    expect(steps.at(-1)).toMatchObject({ path: 'p.stl' });
+  });
+
+  it('stops downloading and throws when cancelled', async () => {
+    const files = Array.from({ length: 20 }, (_, i): [string, number] => [`f${i}.scad`, 1]);
+    const base = fakeNet({
+      ...PINNED,
+      ...listing('main', files),
+      ...Object.fromEntries(files.map(([p]) => [cdnUrl('o', 'r', 'main', p), encodeText('x')])),
+    });
+    const ctrl = new AbortController();
+    const net: Net = { ...base, async getBytes(u) { const r = await base.getBytes(u); ctrl.abort(); return r; } };
+    await expect(loadRepo(net, 'o', 'r', undefined, REPO_CAPS, { signal: ctrl.signal })).rejects.toMatchObject({ code: 'cancelled' });
+    // Only the first batch (one per worker, 8 workers) was requested.
+    expect(base.calls.filter((u) => u.endsWith('.scad')).length).toBeLessThanOrEqual(8);
   });
 });

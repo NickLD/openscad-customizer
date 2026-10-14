@@ -9,12 +9,32 @@ export const REPO_CAPS: Caps = { maxFiles: 300, maxBytes: 25e6, maxFileBytes: 10
 export const LIB_CAPS: Caps = { maxFiles: 1000, maxBytes: 25e6, maxFileBytes: 10e6 };
 export const FETCH_EXTENSIONS = ['.scad', '.json', '.svg', '.dxf', '.stl', '.off', '.3mf', '.png', '.dat', '.csv', '.txt'];
 
+export type FolderChoice = { path: string; models: number };
+
 export class LoadError extends Error {
-  constructor(public code: 'not-found' | 'ref-not-found' | 'network', message: string) {
+  constructor(
+    public code: 'not-found' | 'ref-not-found' | 'network' | 'too-many-files' | 'cancelled',
+    message: string,
+    /** For 'too-many-files': subfolders that could be loaded instead. */
+    public folders: FolderChoice[] = [],
+  ) {
     super(message);
     this.name = 'LoadError';
   }
 }
+
+export type LoadProgress =
+  | { step: 'resolving' }
+  | { step: 'listing' }
+  | { step: 'downloading'; done: number; total: number; path?: string }
+  | { step: 'libraries' };
+export type LoadOptions = {
+  /** Load only this folder, plus scripts outside it that its scripts include or use. */
+  dir?: string;
+  onProgress?(p: LoadProgress): void;
+  /** Aborting stops new downloads; loadRepo then rejects with LoadError('cancelled'). */
+  signal?: AbortSignal;
+};
 
 export type ResolvedRef = { ref: string; sha?: string; stale: boolean };
 export type ListedFile = { path: string; size: number };
@@ -94,7 +114,7 @@ export async function listFiles(net: Net, owner: string, repo: string, ref: stri
 
 export async function fetchFiles(
   net: Net, owner: string, repo: string, ref: string, list: ListedFile[], caps: Caps,
-  opts: { extensions?: string[]; concurrency?: number } = {},
+  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(done: number, total: number, path: string): void } = {},
 ): Promise<{ files: Map<string, Uint8Array>; skipped: string[] }> {
   assertSafeRef(owner, repo, ref);
   const exts = opts.extensions ?? FETCH_EXTENSIONS;
@@ -115,8 +135,9 @@ export async function fetchFiles(
   const files = new Map<string, Uint8Array>();
   const failed = new Set<string>();
   let next = 0;
+  let done = 0;
   const worker = async () => {
-    while (next < wanted.length) {
+    while (next < wanted.length && !opts.signal?.aborted) {
       const f = wanted[next++];
       let data: Uint8Array | null = null;
       try {
@@ -126,6 +147,7 @@ export async function fetchFiles(
       }
       if (data) files.set(f.path, data);
       else failed.add(f.path);
+      opts.onFile?.(++done, wanted.length, f.path);
     }
   };
   await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 8, wanted.length) }, worker));
@@ -137,21 +159,49 @@ export async function fetchFiles(
 const PRIMARY_EXTENSIONS = ['.scad', '.json'];
 const isPrimary = (p: string) => PRIMARY_EXTENSIONS.some((e) => p.toLowerCase().endsWith(e));
 
-export async function loadRepo(net: Net, owner: string, repo: string, ref?: string, caps: Caps = REPO_CAPS): Promise<LoadedRepo> {
+export async function loadRepo(
+  net: Net, owner: string, repo: string, ref?: string, caps: Caps = REPO_CAPS, opts: LoadOptions = {},
+): Promise<LoadedRepo> {
+  const report = opts.onProgress ?? (() => {});
+  const check = () => {
+    if (opts.signal?.aborted) throw new LoadError('cancelled', 'Loading was cancelled.');
+  };
+  // Download counts run across the fetch phases: `base` is what earlier phases finished.
+  let base = 0;
+  let last = 0;
+  const onFile = (done: number, total: number, path: string) => {
+    last = done;
+    report({ step: 'downloading', done: base + done, total: base + total, path });
+  };
+  const nextPhase = () => {
+    base += last;
+    last = 0;
+  };
+  const fetchOpts = { signal: opts.signal, onFile };
+
+  report({ step: 'resolving' });
   const resolved = await resolveRef(net, owner, repo, ref);
+  check();
+  report({ step: 'listing' });
   const list = await listFiles(net, owner, repo, resolved.ref);
+  check();
   // Phase 1: .scad and .json files.
-  const primary = await fetchFiles(net, owner, repo, resolved.ref, list.filter((f) => isPrimary(f.path)), caps, { extensions: PRIMARY_EXTENSIONS });
+  const primary = await fetchFiles(net, owner, repo, resolved.ref, list.filter((f) => isPrimary(f.path)), caps, { extensions: PRIMARY_EXTENSIONS, ...fetchOpts });
+  check();
+  nextPhase();
   const files = primary.files;
   const skipped = [...primary.skipped];
+  // What is left of the caps, budgeted by listed size as fetchFiles does.
+  const remaining = (): Caps => {
+    const used = list.reduce((n, f) => n + (files.has(f.path) ? f.size : 0), 0);
+    return { ...caps, maxFiles: Math.max(0, caps.maxFiles - files.size), maxBytes: Math.max(0, caps.maxBytes - used) };
+  };
   // Phase 2: other assets (STL, PNG, …), only when some script mentions them, within what is left of the caps.
   const texts = [...files].filter(([p]) => p.toLowerCase().endsWith('.scad')).map(([, d]) => decodeText(d));
   const referenced = list.filter((f) => !isPrimary(f.path) && texts.some((t) => t.includes(basename(f.path))));
   if (referenced.length) {
-    // Budget by listed size, as fetchFiles does.
-    const used = list.reduce((n, f) => n + (files.has(f.path) ? f.size : 0), 0);
-    const rest = { ...caps, maxFiles: Math.max(0, caps.maxFiles - files.size), maxBytes: Math.max(0, caps.maxBytes - used) };
-    const assets = await fetchFiles(net, owner, repo, resolved.ref, referenced, rest);
+    const assets = await fetchFiles(net, owner, repo, resolved.ref, referenced, remaining(), fetchOpts);
+    check();
     for (const [p, d] of assets.files) files.set(p, d);
     skipped.push(...assets.skipped);
   }
