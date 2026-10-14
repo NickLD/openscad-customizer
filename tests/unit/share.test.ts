@@ -57,4 +57,9 @@ describe('buildShare', () => {
     expect(s.hash).not.toContain('@');
     expect(s.summary).toContain('always using the latest version');
   });
+
+  it('keeps the loaded folder in the link', () => {
+    const s = buildShare({ ...base, entry: 'ex/cable_gland.scad', dir: 'ex' }, { ...all, settings: false });
+    expect(s.hash).toBe('#/gh/NickLD/split-cable-gland/ex/cable_gland.scad?dir=ex');
+  });
 });

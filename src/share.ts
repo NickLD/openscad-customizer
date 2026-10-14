@@ -8,6 +8,8 @@ export type ShareState = {
   repo: string;
   /** Resolved commit, when known; pinning needs it. */
   sha?: string;
+  /** The folder the repo was loaded from, if only one folder was loaded. */
+  dir?: string;
   entry: string | null;
   title: string;
   multipleModels: boolean;
@@ -26,7 +28,7 @@ export function buildShare(s: ShareState, o: ShareOptions): { hash: string; summ
   const values = toModel && o.settings && !usePreset ? s.changed : {};
 
   const hash = serializeRoute({
-    kind: 'repo', owner: s.owner, repo: s.repo, ref: pin ? s.sha : undefined,
+    kind: 'repo', owner: s.owner, repo: s.repo, ref: pin ? s.sha : undefined, dir: s.dir,
     path: toModel ? s.entry! : undefined, preset: usePreset ? s.preset! : undefined, values,
   });
 

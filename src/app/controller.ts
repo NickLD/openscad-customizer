@@ -10,13 +10,13 @@ import { overrides, sameValue } from '../paramCodec';
 import { defaultsOf, toGroups } from '../paramModel';
 import { parsePresets, resolveValues, type PresetFile } from '../presets';
 import { loadFonts, loadLibraries, missingLibraryMessage, planLibraries } from '../repo/libraries';
-import { loadRepo, LoadError, type LoadedRepo, type Net } from '../repo/repoLoader';
+import { loadRepo, LoadError, type FolderChoice, type LoadedRepo, type LoadProgress, type Net } from '../repo/repoLoader';
 import { parseRoute, serializeRoute } from '../router';
 import type { ShareState } from '../share';
 import type { FileMap, Param, ParamSet, ParamValue } from '../types';
 import { basename, decodeText, encodeText } from '../util';
 
-export type Phase = 'landing' | 'help' | 'loading' | 'picker' | 'model' | 'error';
+export type Phase = 'landing' | 'help' | 'loading' | 'folders' | 'picker' | 'model' | 'error';
 export type RenderState = {
   status: 'idle' | 'rendering' | 'ready' | 'error';
   mesh: Mesh | null;
@@ -73,6 +73,10 @@ export class AppController {
   editedSource = signal<string | null>(null);
   /** True once the engine has answered a job, i.e. OpenSCAD is downloaded and compiled. */
   engineReady = signal(false);
+  /** What the repo loader is doing, while the phase is 'loading'. */
+  loading = signal<LoadProgress | null>(null);
+  /** The repo was too big to load whole: the folders offered instead (phase 'folders'). */
+  tooBig = signal<{ owner: string; repo: string; ref?: string; message: string; folders: FolderChoice[] } | null>(null);
 
   private deps: Required<ControllerDeps>;
   private libFiles: FileMap = new Map();
@@ -87,6 +91,10 @@ export class AppController {
   private pinnedRef: string | undefined;
   /** The ref the current repo was requested with (undefined = default branch). */
   private loadedRef: string | undefined;
+  /** The folder the current repo was loaded from (undefined = whole repo). */
+  private loadedDir: string | undefined;
+  /** Stops the downloads of a repo load that is no longer wanted. */
+  private loadAbort: AbortController | null = null;
   /** Fonts were loaded (or attempted) for the current repo, so a missing-font warning won't load them again. */
   private fontsTried = false;
 
@@ -98,6 +106,8 @@ export class AppController {
     const route = parseRoute(hash);
     this.pinnedRef = route.kind === 'repo' ? route.ref : undefined;
     const mySeq = ++this.openSeq;
+    this.loadAbort?.abort();
+    this.loadAbort = null;
     this.cancelRender();
     this.dropPendingHash(); // the URL already shows the route being opened
     if (route.kind === 'landing' || route.kind === 'help') {
@@ -110,24 +120,41 @@ export class AppController {
       const current = this.repo.value;
       let repo = current;
       const reuse = current && current.owner === route.owner && current.repo === route.repo
-        && (route.ref === this.loadedRef || (route.ref !== undefined && (route.ref === current.ref || route.ref === current.sha)));
+        && (route.ref === this.loadedRef || (route.ref !== undefined && (route.ref === current.ref || route.ref === current.sha)))
+        && route.dir === this.loadedDir;
       if (!reuse) {
+        const abort = new AbortController();
+        this.loadAbort = abort;
+        this.loading.value = { step: 'resolving' };
         try {
-          repo = await this.deps.loadRepo(this.deps.net, route.owner, route.repo, route.ref);
+          repo = await this.deps.loadRepo(this.deps.net, route.owner, route.repo, route.ref, undefined, {
+            dir: route.dir,
+            signal: abort.signal,
+            onProgress: (p) => {
+              if (mySeq === this.openSeq) this.loading.value = p;
+            },
+          });
         } catch (e) {
           // Don't leave the previous repo's title, ref and notices around the error.
           if (mySeq === this.openSeq) this.clearRepo();
           throw e;
         }
         if (mySeq !== this.openSeq) return;
+        this.loading.value = { step: 'libraries' };
         const plan = planLibraries(repo.files, repo.manifest);
         const libs = await this.deps.loadLibraries(this.deps.net, plan);
         if (mySeq !== this.openSeq) return;
+        this.loadAbort = null;
         this.libFiles = libs.files;
         this.fontsTried = plan.needsFonts;
-        const found = findCandidates(repo.files, repo.manifest);
+        // In a folder load, the root manifest's models outside the folder simply aren't offered.
+        const manifest = route.dir && repo.manifest?.files
+          ? { ...repo.manifest, files: repo.manifest.files.filter((f) => f.path.startsWith(route.dir + '/')) }
+          : repo.manifest;
+        const found = findCandidates(repo.files, manifest);
         this.repo.value = repo;
         this.loadedRef = route.ref;
+        this.loadedDir = route.dir;
         this.candidates.value = found.candidates;
         this.notices.value = [...repo.warnings, ...found.warnings, ...libs.warnings, ...plan.missing.map(missingLibraryMessage)];
       }
@@ -142,6 +169,11 @@ export class AppController {
       }
     } catch (e) {
       if (mySeq !== this.openSeq) return;
+      if (e instanceof LoadError && e.code === 'too-many-files') {
+        this.tooBig.value = { owner: route.owner, repo: route.repo, ref: route.ref, message: e.message, folders: e.folders };
+        this.phase.value = 'folders';
+        return;
+      }
       this.error.value = e instanceof LoadError || e instanceof Error ? e.message : String(e);
       this.phase.value = 'error';
     }
@@ -252,7 +284,7 @@ export class AppController {
     if (!repo) return '';
     return serializeRoute({
       // Pinned links stay pinned; unpinned links stay unpinned.
-      kind: 'repo', owner: repo.owner, repo: repo.repo, ref: this.pinnedRef,
+      kind: 'repo', owner: repo.owner, repo: repo.repo, ref: this.pinnedRef, dir: this.loadedDir,
       path: this.entry.value ?? undefined, preset: this.preset.value ?? undefined,
       values: overrides(this.values.value, this.defaults.value),
     });
@@ -271,7 +303,7 @@ export class AppController {
     }
     const candidate = this.candidates.value.find((c) => c.path === entry);
     return {
-      owner: repo.owner, repo: repo.repo, sha: repo.sha, entry,
+      owner: repo.owner, repo: repo.repo, sha: repo.sha, dir: this.loadedDir, entry,
       title: candidate?.title ?? repo.manifest?.title ?? (entry ? basename(entry).replace(/\.scad$/i, '') : `${repo.owner}/${repo.repo}`),
       multipleModels: this.candidates.value.length > 1,
       preset, presetExact, changed: overrides(this.values.value, this.defaults.value),
@@ -283,6 +315,7 @@ export class AppController {
   private clearRepo(): void {
     this.repo.value = null;
     this.loadedRef = undefined;
+    this.loadedDir = undefined;
     this.candidates.value = [];
     this.notices.value = [];
     this.libFiles = new Map();
