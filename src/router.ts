@@ -1,7 +1,16 @@
 import type { Route } from './types';
+import { isSafeRelPath } from './util';
 
 const SEG = /^[A-Za-z0-9_.-]+$/;
 const PARAM_ESCAPE = 'param.';
+/** Query keys the app owns; a parameter with one of these names is written as `param.<name>`. */
+const isReserved = (k: string) => k === 'preset' || k === 'dir' || k.startsWith(PARAM_ESCAPE);
+
+/** A repo-relative folder without surrounding slashes, or undefined when empty or unsafe. */
+export function cleanDir(d: string | undefined): string | undefined {
+  const s = (d ?? '').replace(/^\/+|\/+$/g, '');
+  return s && isSafeRelPath(s) ? s : undefined;
+}
 
 export function parseRoute(hash: string): Route {
   try {
@@ -33,13 +42,15 @@ function parseRouteUnsafe(hash: string): Route {
   const path = segs.length > 2 ? segs.slice(2).map(decodeURIComponent).join('/') : undefined;
 
   let preset: string | undefined;
+  let dir: string | undefined;
   const values: Record<string, string> = {};
   for (const [k, v] of query) {
     if (k === 'preset') preset = v;
+    else if (k === 'dir') dir = cleanDir(v);
     else if (k.startsWith(PARAM_ESCAPE)) values[k.slice(PARAM_ESCAPE.length)] = v;
     else values[k] = v;
   }
-  return { kind: 'repo', owner, repo, ref, path, preset, values };
+  return { kind: 'repo', owner, repo, ref, path, dir, preset, values };
 }
 
 export function serializeRoute(r: Route): string {
@@ -49,9 +60,10 @@ export function serializeRoute(r: Route): string {
   if (r.ref) s += '@' + encodeURIComponent(r.ref);
   if (r.path) s += '/' + r.path.split('/').map(encodeURIComponent).join('/');
   const q = new URLSearchParams();
+  if (r.dir) q.set('dir', r.dir);
   if (r.preset) q.set('preset', r.preset);
   for (const [k, v] of Object.entries(r.values)) {
-    q.set(k === 'preset' || k.startsWith(PARAM_ESCAPE) ? PARAM_ESCAPE + k : k, v);
+    q.set(isReserved(k) ? PARAM_ESCAPE + k : k, v);
   }
   const qs = q.toString();
   return qs ? `${s}?${qs}` : s;
@@ -73,7 +85,8 @@ export function githubInputToRoute(input: string): Route | null {
       const ref = decodeURIComponent(segs[3]);
       const rest = segs.slice(4).map(decodeURIComponent).join('/');
       if (segs[2] === 'blob' && rest.endsWith('.scad')) return { ...base, ref, path: rest };
-      return { ...base, ref };
+      const dir = segs[2] === 'tree' ? cleanDir(rest) : undefined;
+      return dir ? { ...base, ref, dir } : { ...base, ref };
     } catch {
       return null;
     }

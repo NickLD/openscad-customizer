@@ -65,7 +65,7 @@ describe('githubInputToRoute', () => {
 
   it('accepts tree and blob URLs', () => {
     expect(githubInputToRoute('https://github.com/NickLD/gland/tree/dev')).toEqual({ ...base, ref: 'dev' });
-    expect(githubInputToRoute('https://github.com/NickLD/gland/tree/dev/models')).toEqual({ ...base, ref: 'dev' });
+    expect(githubInputToRoute('https://github.com/NickLD/gland/tree/dev/models')).toEqual({ ...base, ref: 'dev', dir: 'models' });
     expect(githubInputToRoute('https://github.com/NickLD/gland/blob/main/models/cable_gland.scad')).toEqual({ ...base, ref: 'main', path: 'models/cable_gland.scad' });
   });
 
@@ -80,5 +80,39 @@ describe('help route', () => {
   it('parses and serializes #/help', () => {
     expect(parseRoute('#/help')).toEqual({ kind: 'help' });
     expect(serializeRoute({ kind: 'help' })).toBe('#/help');
+  });
+});
+
+describe('folder routes', () => {
+  it('parses and serializes dir', () => {
+    const r = parseRoute('#/gh/o/r@main?dir=examples%2FBasics');
+    expect(r).toMatchObject({ kind: 'repo', owner: 'o', repo: 'r', ref: 'main', dir: 'examples/Basics', values: {} });
+    expect(serializeRoute(r)).toBe('#/gh/o/r@main?dir=examples%2FBasics');
+  });
+
+  it('keeps dir next to a model path, preset and values', () => {
+    const h = '#/gh/o/r/examples/a.scad?dir=examples&preset=Big&n=2';
+    expect(serializeRoute(parseRoute(h))).toBe(h);
+  });
+
+  it('strips slashes around dir and ignores unsafe or empty dirs', () => {
+    expect(parseRoute('#/gh/o/r?dir=%2Fexamples%2F')).toMatchObject({ dir: 'examples' });
+    for (const d of ['..%2Fx', '', '%2F', 'a%2F..%2Fb', 'a%5Cb']) {
+      expect((parseRoute(`#/gh/o/r?dir=${d}`) as { dir?: string }).dir).toBeUndefined();
+    }
+  });
+
+  it('escapes a parameter named dir', () => {
+    const h = serializeRoute({ kind: 'repo', owner: 'o', repo: 'r', values: { dir: 'up' } });
+    expect(h).toBe('#/gh/o/r?param.dir=up');
+    const r = parseRoute(h) as { dir?: string; values: Record<string, string> };
+    expect(r.dir).toBeUndefined();
+    expect(r.values).toEqual({ dir: 'up' });
+  });
+
+  it('turns a pasted folder link into a dir route', () => {
+    expect(githubInputToRoute('https://github.com/openscad/openscad/tree/master/examples/Basics/')).toEqual({
+      kind: 'repo', owner: 'openscad', repo: 'openscad', ref: 'master', dir: 'examples/Basics', values: {},
+    });
   });
 });

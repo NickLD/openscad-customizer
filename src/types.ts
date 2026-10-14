@@ -29,6 +29,8 @@ export type Route =
       repo: string;
       ref?: string;
       path?: string;
+      /** Load only this folder (plus files its scripts include). Repo-relative, no leading/trailing slash. */
+      dir?: string;
       preset?: string;
       /** Raw URL values, decoded later against the parameter list. */
       values: Record<string, string>;
