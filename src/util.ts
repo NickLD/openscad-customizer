@@ -40,3 +40,10 @@ const INCLUDE = /^\s*(?:include|use)\s*<([^>]+)>/gm;
 export function includedPaths(path: string, text: string): string[] {
   return [...text.matchAll(INCLUDE)].map((m) => joinPath(dirname(path), m[1]));
 }
+
+/** 512 B, 1.5 KB, 410 KB, 3.4 MB (1 KB = 1024 B). */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const [v, unit] = n < 1024 * 1024 ? [n / 1024, 'KB'] : [n / 1024 / 1024, 'MB'];
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${unit}`;
+}

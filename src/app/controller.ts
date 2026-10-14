@@ -14,7 +14,7 @@ import { loadRepo, LoadError, type FolderChoice, type LoadedRepo, type LoadProgr
 import { parseRoute, serializeRoute } from '../router';
 import type { ShareState } from '../share';
 import type { FileMap, Param, ParamSet, ParamValue } from '../types';
-import { basename, decodeText, encodeText } from '../util';
+import { basename, decodeText, encodeText, formatBytes } from '../util';
 
 export type Phase = 'landing' | 'help' | 'loading' | 'folders' | 'picker' | 'model' | 'error';
 export type RenderState = {
@@ -53,6 +53,16 @@ function fnv1a(s: string): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`;
+const sizeOf = (data: Iterable<Uint8Array>) => [...data].reduce((n, d) => n + d.length, 0);
+
+/** e.g. "Loaded o/r: 56 files (3.4 MB) · BOSL2: 812 files (9.1 MB)" */
+function loadSummary(repo: LoadedRepo, libs: Array<{ name: string; files: number; bytes: number }>): string {
+  const parts = [`${repo.owner}/${repo.repo}: ${files(repo.files.size)} (${formatBytes(sizeOf(repo.files.values()))})`];
+  for (const l of libs) parts.push(`${l.name}: ${files(l.files)} (${formatBytes(l.bytes)})`);
+  return `Loaded ${parts.join(' · ')}`;
+}
+
 export class AppController {
   phase = signal<Phase>('landing');
   error = signal<string | null>(null);
@@ -88,6 +98,8 @@ export class AppController {
   private gen = 0;
   private sourceDirty = false;
   private paramLog: LogLine[] = [];
+  /** First Console line: what loading the repo downloaded. */
+  private loadLog: LogLine[] = [];
   private pinnedRef: string | undefined;
   /** The ref the current repo was requested with (undefined = default branch). */
   private loadedRef: string | undefined;
@@ -143,7 +155,12 @@ export class AppController {
         if (mySeq !== this.openSeq) return;
         this.loading.value = { step: 'libraries' };
         const plan = planLibraries(repo.files, repo.manifest);
-        const libs = await this.deps.loadLibraries(this.deps.net, plan, abort.signal);
+        const libs = await this.deps.loadLibraries(this.deps.net, plan, {
+          signal: abort.signal,
+          onProgress: (p) => {
+            if (mySeq === this.openSeq) this.loading.value = p;
+          },
+        });
         if (mySeq !== this.openSeq) return;
         this.loadAbort = null;
         this.libFiles = libs.files;
@@ -158,6 +175,7 @@ export class AppController {
         this.repo.value = repo;
         this.loadedRef = route.ref;
         this.loadedDir = dir;
+        this.loadLog = [{ level: 'info', text: loadSummary(repo, libs.sizes) }];
         this.candidates.value = found.candidates;
         this.notices.value = [...repo.warnings, ...found.warnings, ...libs.warnings, ...plan.missing.map(missingLibraryMessage)];
       }
@@ -212,7 +230,7 @@ export class AppController {
     this.values.value = values;
     if (rejected.length) this.paramLog = [...this.paramLog, { level: 'warning', text: `Ignored from the link: ${rejected.join(', ')}` }];
     if (!extracted) this.paramLog = [...this.paramLog, { level: 'error', text: "Couldn't read parameters. See the messages above." }];
-    this.log.value = this.paramLog;
+    this.log.value = [...this.loadLog, ...this.paramLog];
     this.phase.value = 'model';
     this.scheduleRender(0);
     this.syncHash();
@@ -319,6 +337,7 @@ export class AppController {
     this.repo.value = null;
     this.loadedRef = undefined;
     this.loadedDir = undefined;
+    this.loadLog = [];
     this.candidates.value = [];
     this.notices.value = [];
     this.libFiles = new Map();
@@ -462,7 +481,7 @@ export class AppController {
     }
     if (seq !== this.seq) return;
     this.abort = null;
-    this.log.value = [...this.paramLog, ...result.log, { level: 'info', text: `Rendered in ${result.ms} ms` }];
+    this.log.value = [...this.loadLog, ...this.paramLog, ...result.log, { level: 'info', text: `Rendered in ${result.ms} ms` }];
     if (!this.fontsTried && result.log.some((l) => MISSING_FONT.test(l.text))) void this.loadMissingFonts();
     if (result.exitCode === 0 && result.output) {
       try {

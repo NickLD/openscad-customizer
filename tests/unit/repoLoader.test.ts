@@ -197,7 +197,7 @@ describe('loadRepo progress and cancelling', () => {
   it('reports each step and every downloaded file', async () => {
     const net = fakeNet({
       ...PINNED,
-      ...listing('main', [['a.scad', 1], ['b.scad', 1], ['p.stl', 1]]),
+      ...listing('main', [['a.scad', 10], ['b.scad', 20], ['p.stl', 5]]),
       [cdnUrl('o', 'r', 'main', 'a.scad')]: encodeText('import("p.stl");'),
       [cdnUrl('o', 'r', 'main', 'b.scad')]: encodeText('x=1;'),
       [cdnUrl('o', 'r', 'main', 'p.stl')]: encodeText('solid'),
@@ -205,7 +205,7 @@ describe('loadRepo progress and cancelling', () => {
     const steps: LoadProgress[] = [];
     await loadRepo(net, 'o', 'r', undefined, REPO_CAPS, { onProgress: (p) => steps.push(p) });
     expect(steps.slice(0, 2)).toEqual([{ step: 'resolving' }, { step: 'listing' }]);
-    expect(steps.slice(2).map((s) => (s.step === 'downloading' ? [s.done, s.total] : s.step))).toEqual([[1, 2], [2, 2], [3, 3]]);
+    expect(steps.slice(2).map((s) => (s.step === 'downloading' ? [s.done, s.total, s.bytes, s.totalBytes] : s.step))).toEqual([[1, 2, 10, 30], [2, 2, 30, 30], [3, 3, 35, 35]]);
     expect(steps.at(-1)).toMatchObject({ path: 'p.stl' });
   });
 
@@ -287,9 +287,9 @@ describe('folder-scoped loading', () => {
 
 describe('folderChoices', () => {
   it('counts .scad files per direct subfolder, at any depth, sorted', () => {
-    const list = ['z/a.scad', 'a/b/c.scad', 'a/d.scad', 'a/e.json', 'top.scad', 'm/readme.md'].map((path) => ({ path, size: 1 }));
-    expect(folderChoices(list)).toEqual([{ path: 'a', models: 2 }, { path: 'z', models: 1 }]);
-    expect(folderChoices(list, 'a')).toEqual([{ path: 'a/b', models: 1 }]);
+    const list = ['z/a.scad', 'a/b/c.scad', 'a/d.scad', 'a/e.json', 'top.scad', 'm/readme.md'].map((path) => ({ path, size: 100 }));
+    expect(folderChoices(list)).toEqual([{ path: 'a', models: 2, bytes: 300 }, { path: 'z', models: 1, bytes: 100 }]);
+    expect(folderChoices(list, 'a')).toEqual([{ path: 'a/b', models: 1, bytes: 100 }]);
   });
 });
 

@@ -88,12 +88,21 @@ describe('loadLibraries file selection', () => {
     expect(net.fetched.some((u) => /\.png|\.stl|gallery/.test(u))).toBe(false);
   });
 
+  it('reports download progress and what each library came to', async () => {
+    const lib = { owner: 'f', repo: 'fancy', ref: 'v2', mount: '/libraries/fancy' };
+    const net = libNet({ 'f/fancy@v2': ['x.scad', 'y.scad'] }, { [cdnUrl('f', 'fancy', 'v2', 'x.scad')]: 'abc' });
+    const steps: unknown[] = [];
+    const { sizes } = await loadLibraries(net, { libs: { fancy: lib }, missing: [], needsFonts: false }, { onProgress: (p) => steps.push(p) });
+    expect(steps.at(-1)).toMatchObject({ step: 'libraries', done: 2, total: 2, bytes: 2, totalBytes: 2 });
+    expect(sizes).toEqual([{ name: 'fancy', files: 2, bytes: 3 }]);
+  });
+
   it('downloads nothing more once cancelled', async () => {
     const lib = { owner: 'f', repo: 'fancy', ref: 'v2', mount: '/libraries/fancy' };
     const net = libNet({ 'f/fancy@v2': ['x.scad', 'y.scad'] }, {});
     const ctrl = new AbortController();
     ctrl.abort();
-    const { files } = await loadLibraries(net, { libs: { fancy: lib }, missing: [], needsFonts: false }, ctrl.signal);
+    const { files } = await loadLibraries(net, { libs: { fancy: lib }, missing: [], needsFonts: false }, { signal: ctrl.signal });
     expect(files.size).toBe(0);
     expect(net.fetched).toEqual([]);
   });

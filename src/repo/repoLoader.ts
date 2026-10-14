@@ -11,7 +11,8 @@ export const LIB_CAPS: Caps = { maxFiles: 1000, maxBytes: 25e6, maxFileBytes: 10
 const CDN_TIMEOUT_MS = 5000;
 export const FETCH_EXTENSIONS = ['.scad', '.json', '.svg', '.dxf', '.stl', '.off', '.3mf', '.png', '.dat', '.csv', '.txt'];
 
-export type FolderChoice = { path: string; models: number };
+/** `bytes`: listed size of the folder's .scad and .json files, i.e. roughly what loading it downloads. */
+export type FolderChoice = { path: string; models: number; bytes: number };
 
 export class LoadError extends Error {
   constructor(
@@ -25,11 +26,13 @@ export class LoadError extends Error {
   }
 }
 
+/** Files finished so far and in the whole download; bytes are listed sizes, so the totals are known up front. */
+export type DownloadCounts = { done: number; total: number; bytes: number; totalBytes: number; path?: string };
 export type LoadProgress =
   | { step: 'resolving' }
   | { step: 'listing' }
-  | { step: 'downloading'; done: number; total: number; path?: string }
-  | { step: 'libraries' };
+  | ({ step: 'downloading' } & DownloadCounts)
+  | ({ step: 'libraries' } & Partial<DownloadCounts>);
 export type LoadOptions = {
   /** Load only this folder, plus scripts outside it that its scripts include or use. */
   dir?: string;
@@ -120,7 +123,7 @@ export async function listFiles(net: Net, owner: string, repo: string, ref: stri
 
 export async function fetchFiles(
   net: Net, owner: string, repo: string, ref: string, list: ListedFile[], caps: Caps,
-  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(done: number, total: number, path: string): void } = {},
+  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(c: DownloadCounts): void } = {},
 ): Promise<{ files: Map<string, Uint8Array>; skipped: string[] }> {
   assertSafeRef(owner, repo, ref);
   const exts = opts.extensions ?? FETCH_EXTENSIONS;
@@ -150,6 +153,8 @@ export async function fetchFiles(
   };
   let next = 0;
   let done = 0;
+  let doneBytes = 0;
+  const totalBytes = wanted.reduce((n, f) => n + f.size, 0);
   const worker = async () => {
     while (next < wanted.length && !opts.signal?.aborted) {
       const f = wanted[next++];
@@ -161,7 +166,8 @@ export async function fetchFiles(
       }
       if (data) files.set(f.path, data);
       else failed.add(f.path);
-      opts.onFile?.(++done, wanted.length, f.path);
+      doneBytes += f.size;
+      opts.onFile?.({ done: ++done, total: wanted.length, bytes: doneBytes, totalBytes, path: f.path });
     }
   };
   await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 8, wanted.length) }, worker));
@@ -178,16 +184,19 @@ const inDir = (p: string, dir?: string) => !dir || p.startsWith(dir + '/');
 /** Direct subfolders of `dir` (or of the repo root) holding .scad files, with how many each holds at any depth. */
 export function folderChoices(list: ListedFile[], dir?: string): FolderChoice[] {
   const prefix = dir ? dir + '/' : '';
-  const counts = new Map<string, number>();
+  const subs = new Map<string, FolderChoice>();
   for (const f of list) {
-    if (!isScad(f.path) || !f.path.startsWith(prefix)) continue;
+    if (!isPrimary(f.path) || !f.path.startsWith(prefix)) continue;
     const rest = f.path.slice(prefix.length);
     const slash = rest.indexOf('/');
     if (slash < 0) continue;
-    const sub = prefix + rest.slice(0, slash);
-    counts.set(sub, (counts.get(sub) ?? 0) + 1);
+    const path = prefix + rest.slice(0, slash);
+    const c = subs.get(path) ?? { path, models: 0, bytes: 0 };
+    c.bytes += f.size;
+    if (isScad(f.path)) c.models++;
+    subs.set(path, c);
   }
-  return [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([path, models]) => ({ path, models }));
+  return [...subs.values()].filter((c) => c.models > 0).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export async function loadRepo(
@@ -198,15 +207,19 @@ export async function loadRepo(
     if (opts.signal?.aborted) throw new LoadError('cancelled', 'Loading was cancelled.');
   };
   // Download counts run across the fetch phases: `base` is what earlier phases finished.
-  let base = 0;
-  let last = 0;
-  const onFile = (done: number, total: number, path: string) => {
-    last = done;
-    report({ step: 'downloading', done: base + done, total: base + total, path });
+  const base = { done: 0, bytes: 0 };
+  let last = { done: 0, bytes: 0 };
+  const onFile = (c: DownloadCounts) => {
+    last = c;
+    report({
+      step: 'downloading', path: c.path,
+      done: base.done + c.done, total: base.done + c.total, bytes: base.bytes + c.bytes, totalBytes: base.bytes + c.totalBytes,
+    });
   };
   const nextPhase = () => {
-    base += last;
-    last = 0;
+    base.done += last.done;
+    base.bytes += last.bytes;
+    last = { done: 0, bytes: 0 };
   };
   const fetchOpts = { signal: opts.signal, onFile };
 

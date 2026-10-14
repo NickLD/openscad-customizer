@@ -45,12 +45,22 @@ describe('App', () => {
   it('shows load progress with the current file and a cancel link', () => {
     const c = ctl();
     c.phase.value = 'loading';
-    c.loading.value = { step: 'downloading', done: 3, total: 10, path: 'examples/a.scad' };
+    c.loading.value = { step: 'downloading', done: 3, total: 10, bytes: 1_258_291, totalBytes: 3_565_158, path: 'examples/a.scad' };
     render(<App ctl={c} />);
-    expect(screen.getByTestId('load-status').textContent).toBe('Downloading files: 3 of 10');
+    expect(screen.getByTestId('load-status').textContent).toBe('Downloading files: 3 of 10 · 1.2 MB of 3.4 MB');
     expect(screen.getByText('examples/a.scad')).toBeTruthy();
-    expect((document.querySelector('progress') as HTMLProgressElement).value).toBe(3);
+    const bar = document.querySelector('progress') as HTMLProgressElement;
+    expect([bar.value, bar.max]).toEqual([1_258_291, 3_565_158]);
     expect(screen.getByText('Cancel').getAttribute('href')).toBe('#');
+  });
+
+  it('shows library download progress', () => {
+    const c = ctl();
+    c.phase.value = 'loading';
+    c.loading.value = { step: 'libraries', done: 120, total: 812, bytes: 2_202_009, totalBytes: 9_542_042, path: 'BOSL2/std.scad' };
+    render(<App ctl={c} />);
+    expect(screen.getByTestId('load-status').textContent).toBe('Downloading libraries: 120 of 812 · 2.1 MB of 9.1 MB');
+    expect(screen.getByText('BOSL2/std.scad')).toBeTruthy();
   });
 
   it('lists folders to load when the repo is too big', () => {
@@ -58,13 +68,13 @@ describe('App', () => {
     c.phase.value = 'folders';
     c.tooBig.value = {
       owner: 'openscad', repo: 'openscad', message: 'openscad/openscad has 682 .scad and .json files, more than the 300 this app loads at once.',
-      folders: [{ path: 'examples', models: 50 }, { path: 'tests', models: 1 }],
+      folders: [{ path: 'examples', models: 50, bytes: 419_840 }, { path: 'tests', models: 1, bytes: 512 }],
     };
     render(<App ctl={c} />);
     const links = screen.getAllByTestId('folder-link');
     expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/gh/openscad/openscad?dir=examples', '#/gh/openscad/openscad?dir=tests']);
-    expect(links[0].textContent).toContain('50 .scad files');
-    expect(links[1].textContent).toContain('1 .scad file');
+    expect(links[0].textContent).toContain('50 .scad files · 410 KB');
+    expect(links[1].textContent).toContain('1 .scad file · 512 B');
   });
 
   it('shows the logo as the Home link', () => {

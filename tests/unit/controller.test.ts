@@ -46,7 +46,7 @@ function make(files: Record<string, string> = { 'g.scad': '/* [Cables] */\ncable
   const ctl = new AppController({
     net: { getJson: vi.fn(), getBytes: vi.fn() }, engine: fe.engine, setHash, debounceMs: 500,
     loadRepo: vi.fn(async () => repo(files)),
-    loadLibraries: vi.fn(async () => ({ files: new Map(), warnings: [] })),
+    loadLibraries: vi.fn(async () => ({ files: new Map(), warnings: [], sizes: [] })),
     ...extra,
   });
   return { ctl, fe, setHash };
@@ -440,9 +440,9 @@ describe('AppController', () => {
     it('stops library downloads when the load is superseded', async () => {
       const { ctl } = make();
       let libSignal: AbortSignal | undefined;
-      let finish!: (r: { files: Map<string, Uint8Array>; warnings: string[] }) => void;
-      (ctl as unknown as { deps: { loadLibraries: ReturnType<typeof vi.fn> } }).deps.loadLibraries.mockImplementationOnce((_n: unknown, _p: unknown, signal: AbortSignal) => {
-        libSignal = signal;
+      let finish!: (r: { files: Map<string, Uint8Array>; warnings: string[]; sizes: [] }) => void;
+      (ctl as unknown as { deps: { loadLibraries: ReturnType<typeof vi.fn> } }).deps.loadLibraries.mockImplementationOnce((_n: unknown, _p: unknown, opts: { signal: AbortSignal }) => {
+        libSignal = opts.signal;
         return new Promise((res) => { finish = res; });
       });
       const first = ctl.open('#/gh/o/r');
@@ -450,14 +450,35 @@ describe('AppController', () => {
       expect(ctl.loading.value).toEqual({ step: 'libraries' });
       await ctl.open('');
       expect(libSignal!.aborted).toBe(true);
-      finish({ files: new Map(), warnings: [] });
+      finish({ files: new Map(), warnings: [], sizes: [] });
       await first;
       expect(ctl.phase.value).toBe('landing');
     });
 
+    it('shows library download progress', async () => {
+      const { ctl } = make();
+      const libs = (ctl as unknown as { deps: { loadLibraries: ReturnType<typeof vi.fn> } }).deps.loadLibraries;
+      libs.mockImplementationOnce(async (_n: unknown, _p: unknown, opts: { onProgress(p: LoadProgress): void }) => {
+        opts.onProgress({ step: 'libraries', done: 5, total: 812, bytes: 1000, totalBytes: 9_000_000, path: 'BOSL2/std.scad' });
+        expect(ctl.loading.value).toEqual({ step: 'libraries', done: 5, total: 812, bytes: 1000, totalBytes: 9_000_000, path: 'BOSL2/std.scad' });
+        return { files: new Map(), warnings: [], sizes: [] };
+      });
+      await ctl.open('#/gh/o/r');
+      expect(libs).toHaveBeenCalled();
+      expect(ctl.error.value).toBeNull();
+    });
+
+    it('starts the Console with what was downloaded', async () => {
+      const { ctl } = make({ 'g.scad': 'x = 1; // [1:2]' });
+      (ctl as unknown as { deps: { loadLibraries: ReturnType<typeof vi.fn> } }).deps.loadLibraries
+        .mockResolvedValueOnce({ files: new Map(), warnings: [], sizes: [{ name: 'BOSL2', files: 812, bytes: 9_542_042 }] });
+      await ctl.open('#/gh/o/r/g.scad');
+      expect(ctl.log.value[0]).toEqual({ level: 'info', text: 'Loaded o/r: 1 file (15 B) · BOSL2: 812 files (9.1 MB)' });
+    });
+
     it('shows folder choices when the repo is too big', async () => {
       const { ctl } = make();
-      const folders = [{ path: 'examples', models: 50 }, { path: 'tests', models: 579 }];
+      const folders = [{ path: 'examples', models: 50, bytes: 400_000 }, { path: 'tests', models: 579, bytes: 2_000_000 }];
       loaderOf(ctl).mockRejectedValueOnce(new LoadError('too-many-files', 'o/r has 682 .scad and .json files, more than the 300 this app loads at once.', folders));
       await ctl.open('#/gh/o/r');
       expect(ctl.phase.value).toBe('folders');
@@ -474,9 +495,9 @@ describe('AppController', () => {
       });
       const first = ctl.open('#/gh/o/r');
       expect(ctl.loading.value).toEqual({ step: 'resolving' });
-      seen.onProgress!({ step: 'downloading', done: 3, total: 10, path: 'a.scad' });
+      seen.onProgress!({ step: 'downloading', done: 3, total: 10, bytes: 30, totalBytes: 100, path: 'a.scad' });
       expect(ctl.phase.value).toBe('loading');
-      expect(ctl.loading.value).toEqual({ step: 'downloading', done: 3, total: 10, path: 'a.scad' });
+      expect(ctl.loading.value).toEqual({ step: 'downloading', done: 3, total: 10, bytes: 30, totalBytes: 100, path: 'a.scad' });
       await ctl.open('');
       expect(seen.signal!.aborted).toBe(true);
       expect(ctl.phase.value).toBe('landing');
