@@ -62,6 +62,12 @@ a.button:not(.primary) { padding: 6px 12px; border: 1px solid var(--border); bor
 .notices { margin: 0; padding: 8px 16px 8px 32px; background: color-mix(in srgb, var(--warning) 12%, var(--panel)); font-size: 13px; }
 
 .landing, .picker, .error-page, .loading, .help { max-width: 960px; margin: 0 auto; padding: 24px 16px; width: 100%; overflow: auto; }
+.loading progress { display: block; width: 100%; max-width: 480px; margin: 8px 0; accent-color: var(--accent); }
+.loading .load-file { display: block; margin-bottom: 16px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.folders { list-style: none; padding: 0; display: grid; gap: 8px; }
+.folders a { display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); text-decoration: none; }
+.folders a:hover { border-color: var(--accent); }
+.folders .muted { color: var(--muted); font-size: 13px; }
 .help h1 { margin: 0 0 8px; font-size: 26px; }
 .help .lead { color: var(--muted); font-size: 16px; }
 .help section { margin: 28px 0; }

@@ -2,9 +2,11 @@ import { lazy, Suspense } from 'preact/compat';
 import { useState } from 'preact/hooks';
 import type { AppController } from '../app/controller';
 import { FilePicker } from './FilePicker';
+import { FolderPicker } from './FolderPicker';
 import { Header } from './Header';
 import { HelpPage } from './HelpPage';
 import { Landing } from './Landing';
+import { LoadingView } from './LoadingView';
 import { ModelView } from './ModelView';
 
 /** `n` changes on every request, so clicking the same line twice jumps twice. */
@@ -33,7 +35,8 @@ export function App({ ctl }: { ctl: AppController }) {
       )}
       {phase === 'landing' && <Landing />}
       {phase === 'help' && <HelpPage />}
-      {phase === 'loading' && <main class="loading" aria-busy="true">Loading repository…</main>}
+      {phase === 'loading' && <LoadingView ctl={ctl} />}
+      {phase === 'folders' && <FolderPicker ctl={ctl} />}
       {phase === 'error' && <main class="error-page"><p role="alert">{ctl.error.value}</p><a href="#">Back to start</a></main>}
       {phase === 'picker' && <FilePicker ctl={ctl} />}
       {phase === 'model' && <ModelView ctl={ctl} drawer={drawer} onJumpToLine={(line) => { setJump((j) => ({ line, n: (j?.n ?? 0) + 1 })); setSourceOpen(true); }} />}

@@ -12,6 +12,12 @@ describe('modelHash', () => {
     expect(modelHash('o', 'r', 'b.scad')).toBe('#/gh/o/r/b.scad');
   });
 
+  it('keeps the loaded folder when switching models', () => {
+    location.hash = '#/gh/o/r@v1?dir=ex';
+    expect(modelHash('o', 'r', 'ex/b.scad')).toBe('#/gh/o/r@v1/ex/b.scad?dir=ex');
+    expect(modelHash('x', 'y', 'b.scad')).toBe('#/gh/x/y/b.scad');
+  });
+
   it('keeps an explicitly pinned ref', () => {
     location.hash = '#/gh/o/r@v1.2/a.scad';
     expect(modelHash('o', 'r', 'sub/b.scad')).toBe('#/gh/o/r@v1.2/sub/b.scad');

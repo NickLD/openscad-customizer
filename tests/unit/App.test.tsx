@@ -42,6 +42,31 @@ describe('App', () => {
     expect(screen.getByText('Use this Customizer for your Model').closest('a')!.getAttribute('href')).toBe('#/help');
   });
 
+  it('shows load progress with the current file and a cancel link', () => {
+    const c = ctl();
+    c.phase.value = 'loading';
+    c.loading.value = { step: 'downloading', done: 3, total: 10, path: 'examples/a.scad' };
+    render(<App ctl={c} />);
+    expect(screen.getByTestId('load-status').textContent).toBe('Downloading files: 3 of 10');
+    expect(screen.getByText('examples/a.scad')).toBeTruthy();
+    expect((document.querySelector('progress') as HTMLProgressElement).value).toBe(3);
+    expect(screen.getByText('Cancel').getAttribute('href')).toBe('#');
+  });
+
+  it('lists folders to load when the repo is too big', () => {
+    const c = ctl();
+    c.phase.value = 'folders';
+    c.tooBig.value = {
+      owner: 'openscad', repo: 'openscad', message: 'openscad/openscad has 682 .scad and .json files, more than the 300 this app loads at once.',
+      folders: [{ path: 'examples', models: 50 }, { path: 'tests', models: 1 }],
+    };
+    render(<App ctl={c} />);
+    const links = screen.getAllByTestId('folder-link');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#/gh/openscad/openscad?dir=examples', '#/gh/openscad/openscad?dir=tests']);
+    expect(links[0].textContent).toContain('50 .scad files');
+    expect(links[1].textContent).toContain('1 .scad file');
+  });
+
   it('shows the logo as the Home link', () => {
     render(<App ctl={ctl()} />);
     const home = screen.getByLabelText('Home');
