@@ -110,12 +110,19 @@ describe('fetchFiles', () => {
     expect(skipped).toEqual([]);
   });
 
-  it('falls back to raw.githubusercontent.com when the CDN is too slow', async () => {
-    const base = fakeNet({ [`https://raw.githubusercontent.com/o/r/${SHA}/a.stl`]: encodeText('solid') });
-    const net: Net = { ...base, getBytes: (u) => (u.startsWith('https://cdn.') ? new Promise(() => {}) : base.getBytes(u)) };
-    const { files } = await fetchFiles(net, 'o', 'r', SHA, [{ path: 'a.stl', size: 5 }], REPO_CAPS, { cdnTimeoutMs: 10 });
-    expect(decodeText(files.get('a.stl')!)).toBe('solid');
-  }, 2000);
+  it('gives jsDelivr requests the CDN timeout, and every request the cancel signal', async () => {
+    const seen: Array<[string, { signal?: AbortSignal; timeoutMs?: number } | undefined]> = [];
+    const net: Net = {
+      async getJson() { return { status: 404, data: null }; },
+      async getBytes(u, o) { seen.push([u, o]); return u.startsWith('https://raw.') ? encodeText('solid') : null; },
+    };
+    const ctrl = new AbortController();
+    await fetchFiles(net, 'o', 'r', SHA, [{ path: 'a.stl', size: 5 }], REPO_CAPS, { signal: ctrl.signal });
+    expect(seen).toEqual([
+      [cdnUrl('o', 'r', SHA, 'a.stl'), { signal: ctrl.signal, timeoutMs: 5000 }],
+      [`https://raw.githubusercontent.com/o/r/${SHA}/a.stl`, { signal: ctrl.signal }],
+    ]);
+  });
 
   it('stops at the file-count cap', async () => {
     const list = Array.from({ length: 5 }, (_, i) => ({ path: `f${i}.scad`, size: 1 }));
@@ -283,5 +290,26 @@ describe('folderChoices', () => {
     const list = ['z/a.scad', 'a/b/c.scad', 'a/d.scad', 'a/e.json', 'top.scad', 'm/readme.md'].map((path) => ({ path, size: 1 }));
     expect(folderChoices(list)).toEqual([{ path: 'a', models: 2 }, { path: 'z', models: 1 }]);
     expect(folderChoices(list, 'a')).toEqual([{ path: 'a/b', models: 1 }]);
+  });
+});
+
+describe('deep links into big repos', () => {
+  const PINNED = { [API]: { status: 403 } };
+  const CAPS = { maxFiles: 3, maxBytes: 1e9, maxFileBytes: 1e9 };
+  const BIG: Array<[string, number]> = [['z.scad', 1], ['examples/a.scad', 1], ['examples/b.scad', 1], ['tests/x/1.scad', 1], ['tests/2.scad', 1]];
+  const bodies = Object.fromEntries(BIG.map(([p]) => [cdnUrl('o', 'r', 'main', p), encodeText('x = 1;')]));
+
+  it("loads the linked model's folder instead of offering folders", async () => {
+    const net = fakeNet({ ...PINNED, ...listing('main', BIG), ...bodies });
+    const repo = await loadRepo(net, 'o', 'r', undefined, CAPS, { entry: 'examples/a.scad' });
+    expect([...repo.files.keys()].sort()).toEqual(['examples/a.scad', 'examples/b.scad']);
+    expect(repo.dir).toBe('examples');
+  });
+
+  it('always loads a linked model at the repo root, even over the cap', async () => {
+    const net = fakeNet({ ...PINNED, ...listing('main', BIG), ...bodies });
+    const repo = await loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 1 }, { entry: 'z.scad' });
+    expect([...repo.files.keys()]).toEqual(['z.scad']);
+    expect(repo.dir).toBeUndefined();
   });
 });

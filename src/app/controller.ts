@@ -129,6 +129,7 @@ export class AppController {
         try {
           repo = await this.deps.loadRepo(this.deps.net, route.owner, route.repo, route.ref, undefined, {
             dir: route.dir,
+            entry: route.path,
             signal: abort.signal,
             onProgress: (p) => {
               if (mySeq === this.openSeq) this.loading.value = p;
@@ -142,19 +143,21 @@ export class AppController {
         if (mySeq !== this.openSeq) return;
         this.loading.value = { step: 'libraries' };
         const plan = planLibraries(repo.files, repo.manifest);
-        const libs = await this.deps.loadLibraries(this.deps.net, plan);
+        const libs = await this.deps.loadLibraries(this.deps.net, plan, abort.signal);
         if (mySeq !== this.openSeq) return;
         this.loadAbort = null;
         this.libFiles = libs.files;
         this.fontsTried = plan.needsFonts;
         // In a folder load, the root manifest's models outside the folder simply aren't offered.
-        const manifest = route.dir && repo.manifest?.files
-          ? { ...repo.manifest, files: repo.manifest.files.filter((f) => f.path.startsWith(route.dir + '/')) }
+        // The loader may have picked the folder itself, for a link to a model in a big repo.
+        const dir = repo.dir ?? route.dir;
+        const manifest = dir && repo.manifest?.files
+          ? { ...repo.manifest, files: repo.manifest.files.filter((f) => f.path.startsWith(dir + '/')) }
           : repo.manifest;
         const found = findCandidates(repo.files, manifest);
         this.repo.value = repo;
         this.loadedRef = route.ref;
-        this.loadedDir = route.dir;
+        this.loadedDir = dir;
         this.candidates.value = found.candidates;
         this.notices.value = [...repo.warnings, ...found.warnings, ...libs.warnings, ...plan.missing.map(missingLibraryMessage)];
       }

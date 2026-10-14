@@ -428,6 +428,33 @@ describe('AppController', () => {
       expect(ctl.notices.value).toEqual([]);
     });
 
+    it("passes a linked model to the loader, and keeps the folder the loader chose for it", async () => {
+      const { ctl } = make();
+      loaderOf(ctl).mockResolvedValueOnce({ ...repo({ 'ex/a.scad': 'x = 1; // [1:2]' }), dir: 'ex' });
+      await ctl.open('#/gh/o/r/ex/a.scad');
+      expect(loaderOf(ctl)).toHaveBeenCalledWith(expect.anything(), 'o', 'r', undefined, undefined, expect.objectContaining({ entry: 'ex/a.scad' }));
+      expect(ctl.entry.value).toBe('ex/a.scad');
+      expect(ctl.hash()).toBe('#/gh/o/r/ex/a.scad?dir=ex');
+    });
+
+    it('stops library downloads when the load is superseded', async () => {
+      const { ctl } = make();
+      let libSignal: AbortSignal | undefined;
+      let finish!: (r: { files: Map<string, Uint8Array>; warnings: string[] }) => void;
+      (ctl as unknown as { deps: { loadLibraries: ReturnType<typeof vi.fn> } }).deps.loadLibraries.mockImplementationOnce((_n: unknown, _p: unknown, signal: AbortSignal) => {
+        libSignal = signal;
+        return new Promise((res) => { finish = res; });
+      });
+      const first = ctl.open('#/gh/o/r');
+      await vi.waitFor(() => expect(libSignal).toBeDefined());
+      expect(ctl.loading.value).toEqual({ step: 'libraries' });
+      await ctl.open('');
+      expect(libSignal!.aborted).toBe(true);
+      finish({ files: new Map(), warnings: [] });
+      await first;
+      expect(ctl.phase.value).toBe('landing');
+    });
+
     it('shows folder choices when the repo is too big', async () => {
       const { ctl } = make();
       const folders = [{ path: 'examples', models: 50 }, { path: 'tests', models: 579 }];

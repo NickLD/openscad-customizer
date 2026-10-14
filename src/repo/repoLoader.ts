@@ -1,5 +1,5 @@
 import { MANIFEST_NAME, parseManifest, type Manifest } from '../manifest';
-import { basename, decodeText, includedPaths } from '../util';
+import { basename, decodeText, dirname, includedPaths } from '../util';
 import type { Net } from './net';
 
 export type { Net } from './net';
@@ -7,7 +7,7 @@ export type { Net } from './net';
 export type Caps = { maxFiles: number; maxBytes: number; maxFileBytes: number };
 export const REPO_CAPS: Caps = { maxFiles: 300, maxBytes: 25e6, maxFileBytes: 10e6 };
 export const LIB_CAPS: Caps = { maxFiles: 1000, maxBytes: 25e6, maxFileBytes: 10e6 };
-/** jsDelivr can take most of a minute on a commit it hasn't cached; after this long, raw.githubusercontent.com is asked instead. */
+/** jsDelivr can take most of a minute to answer on a commit it hasn't cached; after this long without a response, raw.githubusercontent.com is asked instead. */
 const CDN_TIMEOUT_MS = 5000;
 export const FETCH_EXTENSIONS = ['.scad', '.json', '.svg', '.dxf', '.stl', '.off', '.3mf', '.png', '.dat', '.csv', '.txt'];
 
@@ -33,6 +33,8 @@ export type LoadProgress =
 export type LoadOptions = {
   /** Load only this folder, plus scripts outside it that its scripts include or use. */
   dir?: string;
+  /** The model a link opens: always loaded. In a repo over the cap, its folder is loaded instead of offering folders. */
+  entry?: string;
   onProgress?(p: LoadProgress): void;
   /** Aborting stops new downloads; loadRepo then rejects with LoadError('cancelled'). */
   signal?: AbortSignal;
@@ -43,6 +45,8 @@ export type ListedFile = { path: string; size: number };
 export type LoadedRepo = {
   owner: string; repo: string; ref: string; sha?: string; stale: boolean;
   files: Map<string, Uint8Array>; manifest: Manifest | null; warnings: string[];
+  /** The folder that was loaded, when not the whole repo. */
+  dir?: string;
 };
 
 const API = 'https://api.github.com/repos';
@@ -116,7 +120,7 @@ export async function listFiles(net: Net, owner: string, repo: string, ref: stri
 
 export async function fetchFiles(
   net: Net, owner: string, repo: string, ref: string, list: ListedFile[], caps: Caps,
-  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(done: number, total: number, path: string): void; cdnTimeoutMs?: number } = {},
+  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(done: number, total: number, path: string): void } = {},
 ): Promise<{ files: Map<string, Uint8Array>; skipped: string[] }> {
   assertSafeRef(owner, repo, ref);
   const exts = opts.extensions ?? FETCH_EXTENSIONS;
@@ -136,18 +140,12 @@ export async function fetchFiles(
 
   const files = new Map<string, Uint8Array>();
   const failed = new Set<string>();
-  // Null when jsDelivr fails, errors (its error pages lack CORS headers, so fetch throws) or is too slow.
+  // Null when jsDelivr fails, errors (its error pages lack CORS headers, so fetch throws) or doesn't answer in time.
   const fromCdn = async (path: string): Promise<Uint8Array | null> => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const tooSlow = new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), opts.cdnTimeoutMs ?? CDN_TIMEOUT_MS);
-    });
     try {
-      return await Promise.race([net.getBytes(cdnUrl(owner, repo, ref, path)), tooSlow]);
+      return await net.getBytes(cdnUrl(owner, repo, ref, path), { signal: opts.signal, timeoutMs: CDN_TIMEOUT_MS });
     } catch {
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   };
   let next = 0;
@@ -157,7 +155,7 @@ export async function fetchFiles(
       const f = wanted[next++];
       let data: Uint8Array | null = null;
       try {
-        data = (await fromCdn(f.path)) ?? (await net.getBytes(rawUrl(owner, repo, ref, f.path)));
+        data = (await fromCdn(f.path)) ?? (await net.getBytes(rawUrl(owner, repo, ref, f.path), { signal: opts.signal }));
       } catch {
         data = null;
       }
@@ -219,20 +217,28 @@ export async function loadRepo(
   const list = await listFiles(net, owner, repo, resolved.ref);
   check();
   // Phase 1: .scad and .json files in scope (the folder, or the whole repo).
-  const scope = list.filter((f) => isPrimary(f.path) && inDir(f.path, opts.dir));
-  if (opts.dir && !scope.some((f) => isScad(f.path))) {
-    throw new LoadError('not-found', `There are no .scad files in ${opts.dir}/ of ${owner}/${repo}.`);
+  let dir = opts.dir;
+  let scope = list.filter((f) => isPrimary(f.path) && inDir(f.path, dir));
+  // A link to a model in a repo over the cap loads that model's folder.
+  if (!dir && opts.entry && scope.length > caps.maxFiles && dirname(opts.entry)) {
+    dir = dirname(opts.entry);
+    scope = list.filter((f) => isPrimary(f.path) && inDir(f.path, dir));
   }
-  if (scope.length > caps.maxFiles) {
-    let folders = folderChoices(list, opts.dir);
+  if (dir && !scope.some((f) => isScad(f.path))) {
+    throw new LoadError('not-found', `There are no .scad files in ${dir}/ of ${owner}/${repo}.`);
+  }
+  if (scope.length > caps.maxFiles && !opts.entry) {
+    let folders = folderChoices(list, dir);
     // A level holding a single subfolder (tests/ → tests/data/) offers nothing to choose: look one level deeper.
     while (folders.length === 1) folders = folderChoices(list, folders[0].path);
-    const where = opts.dir ? `${opts.dir} in ${owner}/${repo}` : `${owner}/${repo}`;
+    const where = dir ? `${dir} in ${owner}/${repo}` : `${owner}/${repo}`;
     if (folders.length >= 2) {
       throw new LoadError('too-many-files', `${where} has ${scope.length} .scad and .json files, more than the ${caps.maxFiles} this app loads at once.`, folders);
     }
   }
-  const manifestFile = opts.dir ? list.filter((f) => f.path === MANIFEST_NAME) : [];
+  // The linked model goes first, so the cap can't drop it.
+  if (opts.entry) scope.sort((a, b) => Number(b.path === opts.entry) - Number(a.path === opts.entry));
+  const manifestFile = dir ? list.filter((f) => f.path === MANIFEST_NAME) : [];
   const primary = await fetchFiles(net, owner, repo, resolved.ref, [...scope, ...manifestFile], caps, { extensions: PRIMARY_EXTENSIONS, ...fetchOpts });
   check();
   nextPhase();
@@ -244,7 +250,7 @@ export async function loadRepo(
     return { ...caps, maxFiles: Math.max(0, caps.maxFiles - files.size), maxBytes: Math.max(0, caps.maxBytes - used) };
   };
   // Phase 1b (folder loads): scripts outside the folder that loaded scripts include or use, followed transitively.
-  if (opts.dir) {
+  if (dir) {
     const byPath = new Map(list.map((f) => [f.path, f]));
     const tried = new Set<string>();
     for (;;) {
@@ -281,5 +287,5 @@ export async function loadRepo(
     manifest = parsed.manifest;
     warnings.push(...parsed.errors);
   }
-  return { owner, repo, ref: resolved.ref, sha: resolved.sha, stale: resolved.stale, files, manifest, warnings };
+  return { owner, repo, ref: resolved.ref, sha: resolved.sha, stale: resolved.stale, files, manifest, warnings, dir };
 }

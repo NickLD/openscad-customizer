@@ -72,7 +72,7 @@ export function planLibraries(files: Map<string, Uint8Array>, manifest: Manifest
 
 const LIB_EXTENSIONS = ['.scad'];
 
-async function loadSource(net: Net, src: LibSource): Promise<{ files: FileMap; skipped: string[] }> {
+async function loadSource(net: Net, src: LibSource, signal?: AbortSignal): Promise<{ files: FileMap; skipped: string[] }> {
   // Manifest libraries without @ref use 'HEAD', which jsDelivr does not understand: resolve it to a commit.
   const ref = src.ref === 'HEAD' ? (await resolveRef(net, src.owner, src.repo)).ref : src.ref;
   const prefix = src.subdir ? src.subdir + '/' : '';
@@ -83,16 +83,16 @@ async function loadSource(net: Net, src: LibSource): Promise<{ files: FileMap; s
       if (src.only && !src.only.includes(rel)) return false;
       return !(src.exclude ?? []).some((x) => rel.startsWith(x));
     });
-  const { files, skipped } = await fetchFiles(net, src.owner, src.repo, ref, listed, LIB_CAPS, { extensions: src.extensions ?? LIB_EXTENSIONS, concurrency: 16 });
+  const { files, skipped } = await fetchFiles(net, src.owner, src.repo, ref, listed, LIB_CAPS, { extensions: src.extensions ?? LIB_EXTENSIONS, concurrency: 16, signal });
   const out: FileMap = new Map();
   for (const [p, d] of files) out.set(`${src.mount}/${p.slice(prefix.length)}`, d);
   return { files: out, skipped };
 }
 
-async function loadAll(net: Net, sources: Array<[string, LibSource]>, files: FileMap, warnings: string[]): Promise<void> {
+async function loadAll(net: Net, sources: Array<[string, LibSource]>, files: FileMap, warnings: string[], signal?: AbortSignal): Promise<void> {
   await Promise.all(sources.map(async ([name, src]) => {
     try {
-      const r = await loadSource(net, src);
+      const r = await loadSource(net, src, signal);
       for (const [p, d] of r.files) files.set(p, d);
       if (r.skipped.length) warnings.push(`Library ${name}: skipped ${r.skipped.length} file(s).`);
     } catch (e) {
@@ -115,14 +115,15 @@ function transitiveLibs(files: FileMap, planned: Record<string, LibSource>): Rec
   return extra;
 }
 
-export async function loadLibraries(net: Net, plan: LibraryPlan): Promise<{ files: FileMap; warnings: string[] }> {
+/** Aborting `signal` stops further downloads (a cancelled load). */
+export async function loadLibraries(net: Net, plan: LibraryPlan, signal?: AbortSignal): Promise<{ files: FileMap; warnings: string[] }> {
   const sources: Array<[string, LibSource]> = Object.entries(plan.libs);
   if (plan.needsFonts) sources.push(['fonts', FONTS]);
   const files: FileMap = new Map();
   const warnings: string[] = [];
-  await loadAll(net, sources, files, warnings);
+  await loadAll(net, sources, files, warnings, signal);
   // One transitive pass (no further recursion): e.g. a manifest library that includes BOSL2.
-  await loadAll(net, Object.entries(transitiveLibs(files, plan.libs)), files, warnings);
+  await loadAll(net, Object.entries(transitiveLibs(files, plan.libs)), files, warnings, signal);
   return { files, warnings };
 }
 

@@ -88,6 +88,16 @@ describe('loadLibraries file selection', () => {
     expect(net.fetched.some((u) => /\.png|\.stl|gallery/.test(u))).toBe(false);
   });
 
+  it('downloads nothing more once cancelled', async () => {
+    const lib = { owner: 'f', repo: 'fancy', ref: 'v2', mount: '/libraries/fancy' };
+    const net = libNet({ 'f/fancy@v2': ['x.scad', 'y.scad'] }, {});
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const { files } = await loadLibraries(net, { libs: { fancy: lib }, missing: [], needsFonts: false }, ctrl.signal);
+    expect(files.size).toBe(0);
+    expect(net.fetched).toEqual([]);
+  });
+
   it('loads registry libraries included by a loaded library (one transitive pass)', async () => {
     const bosl = REGISTRY.BOSL2;
     const mcad = REGISTRY.MCAD;
