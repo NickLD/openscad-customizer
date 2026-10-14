@@ -29,7 +29,12 @@ Your script needs nothing special: standard customizer comments (`/* [Tab] */`, 
   "title": "My Models",
   "description": "Shown above the model list",
   "files": [
-    { "path": "models/box.scad", "title": "Parametric box", "description": "…", "thumbnail": "img/box.png" }
+    {
+      "path": "models/box.scad",
+      "title": "Parametric box",
+      "description": "…",
+      "thumbnail": "img/box.png"
+    }
   ],
   "libraries": {
     "mylib": "gh:someone/mylib@v2/src"
