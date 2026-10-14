@@ -1,5 +1,6 @@
 import { computed, signal } from '@preact/signals';
 import { findCandidates, type Candidate } from '../candidates';
+import { onlyDefinitions } from '../definitions';
 import type { Job, JobResult } from '../engine/core';
 import { AbortedError, type Engine } from '../engine/engine';
 import { isEmptyGeometry, type LogLine } from '../engine/log';
@@ -45,7 +46,6 @@ const REPO_ROOT = '/repo/';
 /** Trailing debounce for URL writes from value changes (Safari allows ~100 replaceState calls per 10 s). */
 const HASH_DEBOUNCE_MS = 300;
 const MISSING_FONT = /Can't get font/;
-const EMPTY_MSG = 'Render produced no geometry (check the `part` setting?)';
 
 function fnv1a(s: string): string {
   let h = 0x811c9dc5;
@@ -449,6 +449,17 @@ export class AppController {
     this.hashTimer = null;
   }
 
+  /** Why a render came out empty, as far as the script tells. */
+  private emptyMessage(entry: string): string {
+    if (onlyDefinitions(this.entrySource())) {
+      const others = this.candidates.value.map((c) => c.path).filter((p) => p !== entry);
+      const tryThese = others.length ? `: try ${others.slice(0, 3).join(', ')}${others.length > 3 ? ', …' : ''}` : '';
+      return `${basename(entry)} only defines modules and functions, so it draws nothing on its own. It's probably a part that another file uses${tryThese}.`;
+    }
+    if (this.params.value.some((p) => p.name === 'part')) return 'Render produced no geometry (check the `part` setting?)';
+    return 'Render produced no geometry.';
+  }
+
   private clearTimer(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -495,7 +506,7 @@ export class AppController {
         return;
       }
     }
-    const message = isEmptyGeometry(result.log) ? EMPTY_MSG : 'Render failed. See the Console for details.';
+    const message = isEmptyGeometry(result.log) ? this.emptyMessage(entry) : 'Render failed. See the Console for details.';
     this.render.value = { ...this.render.value, status: 'error', outdated: true, message };
   }
 }

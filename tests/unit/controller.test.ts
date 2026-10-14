@@ -147,6 +147,25 @@ describe('AppController', () => {
     expect(ctl.render.value).toMatchObject({ status: 'error', outdated: true, message: 'Render produced no geometry (check the `part` setting?)' });
   });
 
+  it('explains an empty render of a file that only defines modules, naming the repo models to try', async () => {
+    const { ctl, fe } = make({ 'parts/lid.scad': 'module lid() { cube(1); }', 'case.scad': 'use <parts/lid.scad>\nlid();' });
+    await ctl.open('#/gh/o/r/parts/lid.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    fe.renders()[0].resolve({ exitCode: 1, output: null, log: [{ level: 'info', text: 'Current top level object is empty.' }], ms: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctl.render.value.message).toBe("lid.scad only defines modules and functions, so it draws nothing on its own. It's probably a part that another file uses: try case.scad.");
+  });
+
+  it('says only that nothing was drawn when the model has no part setting', async () => {
+    const { ctl, fe } = make({ 'g.scad': 'n = 0; // [0:2]\nif (n > 0) cube(n);' });
+    fe.cfg.params = () => ({ exitCode: 0, output: encodeText(JSON.stringify({ title: 'g', parameters: [SET.parameters[0]] })), log: [], ms: 1 });
+    await ctl.open('#/gh/o/r/g.scad');
+    await vi.advanceTimersByTimeAsync(0);
+    fe.renders()[0].resolve({ exitCode: 1, output: null, log: [{ level: 'info', text: 'Current top level object is empty.' }], ms: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctl.render.value.message).toBe('Render produced no geometry.');
+  });
+
   it('shows the picker for repos with several models, and opens the only one directly', async () => {
     const many = make({ 'a.scad': 'x = 1; // [1:2]', 'b.scad': 'y = 1; // [1:2]' });
     await many.ctl.open('#/gh/o/r');
