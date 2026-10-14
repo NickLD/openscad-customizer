@@ -2,22 +2,22 @@
 
 Customize OpenSCAD models from any public GitHub repo, right in the browser. OpenSCAD runs locally as WebAssembly: nothing is uploaded.
 
-**App:** https://NickLD.github.io/openscad-customizer/
+**App:** https://openscad.app/
 
 ## Link to your own models
 
 ```
-https://NickLD.github.io/openscad-customizer/#/gh/OWNER/REPO                     pick a model
-https://NickLD.github.io/openscad-customizer/#/gh/OWNER/REPO/path/model.scad     open one model
-https://NickLD.github.io/openscad-customizer/#/gh/OWNER/REPO@v1.2/model.scad     pin a tag/branch/commit
-…/model.scad?width=40&label=Hello                                                with parameter values
-…/model.scad?preset=Large                                                        with a saved preset
+https://openscad.app/#/gh/OWNER/REPO                    pick a model
+https://openscad.app/#/gh/OWNER/REPO/path/model.scad    open one model
+https://openscad.app/#/gh/OWNER/REPO@v1.2/model.scad    pin a tag/branch/commit
+…/model.scad?width=40&label=Hello                       with parameter values
+…/model.scad?preset=Large                               with a saved preset
 ```
 
 Badge for your README:
 
 ```markdown
-[![Open in OpenSCAD Customizer](https://img.shields.io/badge/Open%20in-OpenSCAD%20Customizer-f9d72c)](https://NickLD.github.io/openscad-customizer/#/gh/OWNER/REPO)
+[![Open in OpenSCAD Customizer](https://img.shields.io/badge/Open%20in-OpenSCAD%20Customizer-f9d72c)](https://openscad.app/#/gh/OWNER/REPO)
 ```
 
 Your script needs nothing special: standard customizer comments (`/* [Tab] */`, `// [min:step:max]`, `// [a, b, c]`) become the form. Presets saved by OpenSCAD's customizer (`model.json` next to `model.scad`) appear in the Preset dropdown.
@@ -47,7 +47,7 @@ Limits: public repos only; 300 files / 25 MB per repo. `.scad` and `.json` files
 
 Exported STL and 3MF meshes come from OpenSCAD's OFF output, which has 6 significant digits: about 0.001 mm of rounding on a 100 mm part.
 
-The in-app guide at [`#/help`](https://NickLD.github.io/openscad-customizer/#/help) generates your link and badge from a repo URL.
+The in-app guide at [`#/help`](https://openscad.app/#/help) generates your link and badge from a repo URL.
 
 ## Get your model featured
 
