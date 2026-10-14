@@ -75,6 +75,7 @@ npm install
 npm run dev        # downloads OpenSCAD WASM on first run
 npm test           # unit + engine tests
 npm run e2e        # Playwright
+node scripts/render-icons.mjs   # after editing public/favicon.svg: regenerates favicon.ico, apple-touch-icon.png & og-image.png
 ```
 
 License: GPL-2.0-or-later (same as OpenSCAD).

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    .outline { stroke: #1d2026; }
+    .panel { fill: #2b2f36; }
+    .track { stroke: #9aa1ab; }
+    @media (prefers-color-scheme: dark) {
+      .outline { stroke: #e6e8eb; }
+      .panel { fill: #3a3f48; }
+      .track { stroke: #b4bac3; }
+    }
+  </style>
+  <path d="M32 5 56 18.5 32 32 8 18.5Z" fill="#fde68a"/>
+  <path d="M8 18.5 32 32v27L8 45.5Z" fill="#f9d72c"/>
+  <path class="panel" d="M56 18.5 32 32v27l24-13.5Z"/>
+  <path class="outline" d="M32 5 56 18.5v27L32 59 8 45.5v-27Z M8 18.5 32 32 56 18.5 M32 32v27" fill="none" stroke-width="3" stroke-linejoin="round"/>
+  <path class="track" d="M37 33.5 51 25.6M37 41.5 51 33.6M37 49.5 51 41.6" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="47" cy="27.9" r="2.6" fill="#f9d72c"/>
+  <circle cx="40.5" cy="39.5" r="2.6" fill="#f9d72c"/>
+  <circle cx="45" cy="44.9" r="2.6" fill="#f9d72c"/>
+</svg>

@@ -1,11 +1,13 @@
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --text: #1d2026; --muted: #5d6470; --border: #dde1e6;
   --accent: #f9d72c; --accent-text: #1d2026; --error: #c62828; --warning: #a86500; --focus: #2b6cb0;
+  --logo-outline: #1d2026; --logo-panel: #2b2f36; --logo-track: #9aa1ab;
   color-scheme: light;
 }
 :root[data-theme='dark'] {
   --bg: #121418; --panel: #1b1d22; --text: #e6e8eb; --muted: #9aa1ab; --border: #2c3038;
   --accent: #f9d72c; --accent-text: #121418; --error: #ef7b7b; --warning: #e0a84a; --focus: #7fb3ff;
+  --logo-outline: #e6e8eb; --logo-panel: #3a3f48; --logo-track: #b4bac3;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -21,7 +23,10 @@ button.primary, .button.primary { background: var(--accent); color: var(--accent
 .app { display: flex; flex-direction: column; height: 100%; }
 .app-header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .app-header h1 { font-size: 17px; margin: 0; }
-.app-header .brand { font-size: 22px; text-decoration: none; color: var(--text); }
+.app-header .brand { display: flex; text-decoration: none; }
+.logo .logo-outline { stroke: var(--logo-outline); }
+.logo .logo-panel { fill: var(--logo-panel); }
+.logo .logo-track { stroke: var(--logo-track); }
 .app-header .ref { color: var(--muted); font-size: 13px; font-family: ui-monospace, monospace; }
 .app-header .spacer { flex: 1; }
 .share-wrap { position: relative; }

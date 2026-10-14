@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AppController } from '../app/controller';
 import { APP_REPO_URL } from '../config';
 import { CodeIcon, GitHubIcon, PlusIcon, ShareIcon } from './icons';
+import { Logo } from './Logo';
 import { modelHash } from './links';
 import { SharePanel } from './SharePanel';
 import { isDark, toggleTheme } from './theme';
@@ -30,7 +31,7 @@ export function Header({ ctl, onToggleSource }: { ctl: AppController; onToggleSo
 
   return (
     <header class="app-header">
-      <a class="brand" href="#" aria-label="Home">◧</a>
+      <a class="brand" href="#" aria-label="Home"><Logo /></a>
       <h1>{title}</h1>
       {phase === 'model' && ctl.candidates.value.length > 1 && (
         <select aria-label="Model" value={ctl.entry.value ?? ''} onChange={(e) => (location.hash = modelHash(repo!.owner, repo!.repo, e.currentTarget.value))}>

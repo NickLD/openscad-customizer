@@ -4,6 +4,7 @@ import { APP_REPO_URL } from '../config';
 import { FEATURED, featuredHash, featuredThumbnail } from '../featured';
 import { FONTS, REGISTRY } from '../repo/libraries';
 import { githubInputToRoute, serializeRoute } from '../router';
+import { Logo } from './Logo';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' } as const;
 const LIBRARIES = [
@@ -23,7 +24,7 @@ export function Landing() {
             const thumb = featuredThumbnail(m);
             return (
               <div key={`${m.owner}/${m.repo}/${m.path}`} class="card featured-card" data-testid="featured-card">
-                {thumb ? <img src={thumb} alt="" loading="lazy" /> : <div class="placeholder">◧</div>}
+                {thumb ? <img src={thumb} alt="" loading="lazy" /> : <div class="placeholder"><Logo size={72} /></div>}
                 <h3>{m.title}</h3>
                 <p>{m.description}</p>
                 <a class="button primary" href={featuredHash(m)}>Customize it</a>

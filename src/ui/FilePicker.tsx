@@ -1,6 +1,7 @@
 import type { AppController } from '../app/controller';
 import { modelHash } from './links';
 import { cdnUrl } from '../repo/repoLoader';
+import { Logo } from './Logo';
 
 export function FilePicker({ ctl }: { ctl: AppController }) {
   const repo = ctl.repo.value!;
@@ -11,7 +12,7 @@ export function FilePicker({ ctl }: { ctl: AppController }) {
       <div class="cards">
         {ctl.candidates.value.map((c) => (
           <a key={c.path} class="card" data-testid="picker-card" href={modelHash(repo.owner, repo.repo, c.path)}>
-            {c.thumbnail ? <img src={cdnUrl(repo.owner, repo.repo, repo.ref, c.thumbnail)} alt="" loading="lazy" /> : <div class="placeholder">◧</div>}
+            {c.thumbnail ? <img src={cdnUrl(repo.owner, repo.repo, repo.ref, c.thumbnail)} alt="" loading="lazy" /> : <div class="placeholder"><Logo size={72} /></div>}
             <h3>{c.title}</h3>
             {c.description && <p>{c.description}</p>}
             <code>{c.path}</code>

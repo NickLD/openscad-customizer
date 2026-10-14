@@ -42,6 +42,13 @@ describe('App', () => {
     expect(screen.getByText('Use this Customizer for your Model').closest('a')!.getAttribute('href')).toBe('#/help');
   });
 
+  it('shows the logo as the Home link', () => {
+    render(<App ctl={ctl()} />);
+    const home = screen.getByLabelText('Home');
+    expect(home.getAttribute('href')).toBe('#');
+    expect(home.querySelector('svg.logo')).toBeTruthy();
+  });
+
   it('renders the help page in the help phase', () => {
     const c = ctl();
     c.phase.value = 'help';
