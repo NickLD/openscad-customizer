@@ -7,6 +7,8 @@ export type { Net } from './net';
 export type Caps = { maxFiles: number; maxBytes: number; maxFileBytes: number };
 export const REPO_CAPS: Caps = { maxFiles: 300, maxBytes: 25e6, maxFileBytes: 10e6 };
 export const LIB_CAPS: Caps = { maxFiles: 1000, maxBytes: 25e6, maxFileBytes: 10e6 };
+/** jsDelivr can take most of a minute on a commit it hasn't cached; after this long, raw.githubusercontent.com is asked instead. */
+const CDN_TIMEOUT_MS = 5000;
 export const FETCH_EXTENSIONS = ['.scad', '.json', '.svg', '.dxf', '.stl', '.off', '.3mf', '.png', '.dat', '.csv', '.txt'];
 
 export type FolderChoice = { path: string; models: number };
@@ -114,7 +116,7 @@ export async function listFiles(net: Net, owner: string, repo: string, ref: stri
 
 export async function fetchFiles(
   net: Net, owner: string, repo: string, ref: string, list: ListedFile[], caps: Caps,
-  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(done: number, total: number, path: string): void } = {},
+  opts: { extensions?: string[]; concurrency?: number; signal?: AbortSignal; onFile?(done: number, total: number, path: string): void; cdnTimeoutMs?: number } = {},
 ): Promise<{ files: Map<string, Uint8Array>; skipped: string[] }> {
   assertSafeRef(owner, repo, ref);
   const exts = opts.extensions ?? FETCH_EXTENSIONS;
@@ -134,6 +136,20 @@ export async function fetchFiles(
 
   const files = new Map<string, Uint8Array>();
   const failed = new Set<string>();
+  // Null when jsDelivr fails, errors (its error pages lack CORS headers, so fetch throws) or is too slow.
+  const fromCdn = async (path: string): Promise<Uint8Array | null> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tooSlow = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), opts.cdnTimeoutMs ?? CDN_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([net.getBytes(cdnUrl(owner, repo, ref, path)), tooSlow]);
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   let next = 0;
   let done = 0;
   const worker = async () => {
@@ -141,7 +157,7 @@ export async function fetchFiles(
       const f = wanted[next++];
       let data: Uint8Array | null = null;
       try {
-        data = (await net.getBytes(cdnUrl(owner, repo, ref, f.path))) ?? (await net.getBytes(rawUrl(owner, repo, ref, f.path)));
+        data = (await fromCdn(f.path)) ?? (await net.getBytes(rawUrl(owner, repo, ref, f.path)));
       } catch {
         data = null;
       }

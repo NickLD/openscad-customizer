@@ -100,6 +100,23 @@ describe('fetchFiles', () => {
     expect(skipped).toEqual(['huge.stl (over 10 MB)', 'gone.scad (download failed)']);
   });
 
+  it('falls back to raw.githubusercontent.com when the CDN request throws (e.g. a CORS-less error page)', async () => {
+    const net = fakeNet({
+      [cdnUrl('o', 'r', SHA, 'a.stl')]: 'network-error',
+      [`https://raw.githubusercontent.com/o/r/${SHA}/a.stl`]: encodeText('solid'),
+    });
+    const { files, skipped } = await fetchFiles(net, 'o', 'r', SHA, [{ path: 'a.stl', size: 5 }], REPO_CAPS);
+    expect(decodeText(files.get('a.stl')!)).toBe('solid');
+    expect(skipped).toEqual([]);
+  });
+
+  it('falls back to raw.githubusercontent.com when the CDN is too slow', async () => {
+    const base = fakeNet({ [`https://raw.githubusercontent.com/o/r/${SHA}/a.stl`]: encodeText('solid') });
+    const net: Net = { ...base, getBytes: (u) => (u.startsWith('https://cdn.') ? new Promise(() => {}) : base.getBytes(u)) };
+    const { files } = await fetchFiles(net, 'o', 'r', SHA, [{ path: 'a.stl', size: 5 }], REPO_CAPS, { cdnTimeoutMs: 10 });
+    expect(decodeText(files.get('a.stl')!)).toBe('solid');
+  }, 2000);
+
   it('stops at the file-count cap', async () => {
     const list = Array.from({ length: 5 }, (_, i) => ({ path: `f${i}.scad`, size: 1 }));
     const routes: Routes = Object.fromEntries(list.map((f) => [cdnUrl('o', 'r', SHA, f.path), encodeText('x')]));
