@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cdnUrl, fetchFiles, folderChoices, LoadError, loadRepo, REPO_CAPS, resolveRef, type LoadProgress, type Net } from '../../src/repo/repoLoader';
+import { cdnUrl, fetchFiles, folderChoices, listFiles, LoadError, loadRepo, REPO_CAPS, resolveRef, type LoadProgress, type Net } from '../../src/repo/repoLoader';
 import { decodeText, encodeText } from '../../src/util';
 
 const SHA = 'a'.repeat(40);
@@ -311,5 +311,25 @@ describe('deep links into big repos', () => {
     const repo = await loadRepo(net, 'o', 'r', undefined, { ...CAPS, maxFiles: 1 }, { entry: 'z.scad' });
     expect([...repo.files.keys()]).toEqual(['z.scad']);
     expect(repo.dir).toBeUndefined();
+  });
+});
+
+describe('listFiles', () => {
+  const TREE = `${API}/git/trees/${SHA}?recursive=1`;
+  const tree = { [TREE]: { status: 200, data: { tree: [{ path: 'a.scad', type: 'blob', size: 3 }, { path: 'd', type: 'tree' }] } } };
+
+  it("falls back to GitHub's tree when the jsDelivr listing request throws (e.g. a CORS-less error page)", async () => {
+    const net = fakeNet({ [`https://data.jsdelivr.com/v1/packages/gh/o/r@${SHA}?structure=flat`]: 'network-error', ...tree });
+    expect(await listFiles(net, 'o', 'r', SHA)).toEqual([{ path: 'a.scad', size: 3 }]);
+  });
+
+  it('gives the jsDelivr listing a time limit', async () => {
+    const seen: Array<[string, unknown]> = [];
+    const net: Net = {
+      async getJson(u, o) { seen.push([u, o]); return u === TREE ? tree[TREE] : { status: 404, data: null }; },
+      async getBytes() { return null; },
+    };
+    await listFiles(net, 'o', 'r', SHA);
+    expect(seen[0]).toEqual([`https://data.jsdelivr.com/v1/packages/gh/o/r@${SHA}?structure=flat`, { timeoutMs: 10_000 }]);
   });
 });

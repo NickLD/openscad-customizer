@@ -102,14 +102,21 @@ export async function resolveRef(net: Net, owner: string, repo: string, ref?: st
   }
 }
 
+/** jsDelivr can hang on listing a repo it won't serve; GitHub's tree API answers quickly instead. */
+const LISTING_TIMEOUT_MS = 10_000;
+
 export async function listFiles(net: Net, owner: string, repo: string, ref: string): Promise<ListedFile[]> {
   assertSafeRef(owner, repo, ref);
   try {
-    const j = await net.getJson(listingUrl(owner, repo, ref));
+    const j = await net.getJson(listingUrl(owner, repo, ref), { timeoutMs: LISTING_TIMEOUT_MS });
     if (j.status === 200) {
       const files = (j.data as { files?: Array<{ name: string; size: number }> })?.files ?? [];
       return files.map((f) => ({ path: f.name.replace(/^\//, ''), size: f.size }));
     }
+  } catch {
+    /* jsDelivr unreachable, too slow, or answered without CORS headers: ask GitHub */
+  }
+  try {
     const t = await net.getJson(`${API}/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
     if (t.status === 200) {
       const tree = (t.data as { tree?: Array<{ path: string; type: string; size?: number }> })?.tree ?? [];

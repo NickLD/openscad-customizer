@@ -30,3 +30,10 @@ describe('browserNet.getBytes', () => {
     await expect(p).rejects.toThrow();
   });
 });
+
+describe('browserNet.getJson', () => {
+  it('aborts the request when response headers take longer than timeoutMs', async () => {
+    vi.stubGlobal('fetch', hangingFetch());
+    await expect(browserNet.getJson('https://x/a', { timeoutMs: 10 })).rejects.toThrow();
+  });
+});
