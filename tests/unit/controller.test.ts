@@ -289,6 +289,15 @@ describe('AppController', () => {
     expect(texts).toContain('Parser error'); // errors from reading the script still matter
   });
 
+  it('treats a script without Customizer parameters as having none, not as an error', async () => {
+    const { ctl, fe } = make({ 'g.scad': 'cube(1);' });
+    // OpenSCAD leaves out the parameters list entirely when there are none.
+    fe.cfg.params = () => ({ exitCode: 0, output: encodeText('{"title":"g"}'), log: [], ms: 1 });
+    await ctl.open('#/gh/o/r/g.scad');
+    expect(ctl.params.value).toEqual([]);
+    expect(ctl.log.value.filter((l) => l.level === 'error')).toEqual([]);
+  });
+
   it('logs the render time after a successful render', async () => {
     const { ctl, fe } = make();
     await ctl.open('#/gh/o/r/g.scad');

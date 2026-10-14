@@ -395,11 +395,12 @@ export class AppController {
         set = null;
       }
     }
-    if (!set || !Array.isArray(set.parameters)) {
+    if (!set || typeof set !== 'object') {
       if (!keepOnFail) this.params.value = [];
       return false;
     }
-    this.params.value = set.parameters;
+    // OpenSCAD leaves `parameters` out when a script has no Customizer parameters.
+    this.params.value = Array.isArray(set.parameters) ? set.parameters : [];
     return true;
   }
 
